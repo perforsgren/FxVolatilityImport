@@ -18,24 +18,35 @@ namespace FxVolatilityImport.Services
             var lines = File.ReadAllLines(_filePath);
             if (lines.Length < 2) return pairs.ToList();
 
-            // Hitta CURR_PAIR kolumnindex från header
             var headers = lines[0].Split(';');
+
             int currPairIndex = Array.FindIndex(headers, h =>
                 h.Trim().Equals("CURR_PAIR", StringComparison.OrdinalIgnoreCase));
 
-            if (currPairIndex < 0) return pairs.ToList();
+            int typologyIndex = Array.FindIndex(headers, h =>
+                h.Trim().Equals("TYPOLOGY", StringComparison.OrdinalIgnoreCase));
+
+            if (currPairIndex < 0 || typologyIndex < 0)
+                return pairs.ToList();
 
             for (int i = 1; i < lines.Length; i++)
             {
                 var cols = lines[i].Split(';');
-                if (cols.Length > currPairIndex)
+
+                if (cols.Length <= Math.Max(currPairIndex, typologyIndex))
+                    continue;
+
+                var typology = cols[typologyIndex].Trim();
+
+                if (typology.Equals("FX: Spot Forward", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var pair = cols[currPairIndex].Trim();
+                if (!string.IsNullOrEmpty(pair))
                 {
-                    var pair = cols[currPairIndex].Trim();
-                    if (!string.IsNullOrEmpty(pair))
-                    {
-                        // Konvertera "USD/SEK" -> "USDSEK"
-                        pairs.Add(pair.Replace("/", ""));
-                    }
+                    var normalizedPair = pair.Replace("/", "");
+                    normalizedPair = CurrencyPairMapper.ToRiskSystemPair(normalizedPair);
+                    pairs.Add(normalizedPair);
                 }
             }
 
