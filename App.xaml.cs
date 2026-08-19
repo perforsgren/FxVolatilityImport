@@ -1,5 +1,4 @@
-﻿using System.Drawing;
-using System.Drawing.Drawing2D;
+using System.Drawing;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -9,8 +8,6 @@ using Hardcodet.Wpf.TaskbarNotification;
 using FxVolatilityImport.Views;
 using FxVolatilityImport.ViewModels;
 using Application = System.Windows.Application;
-using FlowDirection = System.Windows.FlowDirection;
-using PixelFormat = System.Drawing.Imaging.PixelFormat;
 
 namespace FxVolatilityImport
 {
@@ -20,7 +17,7 @@ namespace FxVolatilityImport
         private WidgetWindow? _widgetWindow;
         private MainWindow? _mainWindow;
         private MainViewModel? _viewModel;
-        
+
         public ImageSource? AppIcon { get; private set; }
         public Icon? AppIconWinForms { get; private set; }
 
@@ -29,11 +26,11 @@ namespace FxVolatilityImport
             base.OnStartup(e);
 
             _viewModel = new MainViewModel();
-            
-            // Skapa ikoner
-            AppIconWinForms = CreateAppIcon();
-            AppIcon = CreateAppIconImageSource();
-            
+
+            // Ladda ikon från app.ico – väljer bästa ram för varje användningsfall
+            AppIcon = LoadBestIconFrame(preferredSize: 32);
+            AppIconWinForms = LoadSystemDrawingIcon();
+
             _trayIcon = new TaskbarIcon
             {
                 Icon = AppIconWinForms,
@@ -46,83 +43,35 @@ namespace FxVolatilityImport
             _mainWindow.Show();
         }
 
-        private static ImageSource CreateAppIconImageSource()
+        /// <summary>
+        /// Läser app.ico och väljer den ram som är närmast önskad storlek.
+        /// Undviker att WPF automatiskt väljer minsta ramen och skalar upp den.
+        /// </summary>
+        private static BitmapSource LoadBestIconFrame(int preferredSize = 32)
         {
-            int size = 32;
-            var visual = new DrawingVisual();
+            var decoder = new IconBitmapDecoder(
+                new Uri("pack://application:,,,/FxVolatilityImport;component/app.ico"),
+                BitmapCreateOptions.PreservePixelFormat,
+                BitmapCacheOption.OnLoad);
 
-            using (var context = visual.RenderOpen())
-            {
-                var background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x38, 0xBD, 0xF8));
-                
-                context.DrawRoundedRectangle(background, null,
-                    new System.Windows.Rect(0, 0, size, size), 6, 6);
-
-                var typeface = new Typeface(new System.Windows.Media.FontFamily("Segoe UI"),
-                    FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
-
-                var formattedText = new FormattedText("V",
-                    System.Globalization.CultureInfo.CurrentCulture,
-                    FlowDirection.LeftToRight,
-                    typeface,
-                    20,
-                    new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x0F, 0x17, 0x2A)),
-                    96);
-
-                var textX = (size - formattedText.Width) / 2;
-                var textY = (size - formattedText.Height) / 2;
-                context.DrawText(formattedText, new System.Windows.Point(textX, textY));
-            }
-
-            var renderTarget = new RenderTargetBitmap(size, size, 96, 96, PixelFormats.Pbgra32);
-            renderTarget.Render(visual);
-            renderTarget.Freeze();
-            return renderTarget;
+            return decoder.Frames
+                .OrderBy(f => Math.Abs(f.PixelWidth - preferredSize))
+                .First();
         }
 
-        private static Icon CreateAppIcon()
+        /// <summary>
+        /// Laddar app.ico som System.Drawing.Icon för tray-ikonen.
+        /// Windows väljer automatiskt rätt ram baserat på DPI/kontext.
+        /// </summary>
+        private static Icon LoadSystemDrawingIcon()
         {
-            int size = 32;
-            
-            using var bitmap = new Bitmap(size, size, PixelFormat.Format32bppArgb);
-            using var g = Graphics.FromImage(bitmap);
-            
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
-            
-            var backgroundColor = System.Drawing.Color.FromArgb(0x38, 0xBD, 0xF8);
-            using var backgroundBrush = new SolidBrush(backgroundColor);
-            
-            var rect = new Rectangle(0, 0, size - 1, size - 1);
-            int radius = 6;
-            using var path = CreateRoundedRectangle(rect, radius);
-            g.FillPath(backgroundBrush, path);
-            
-            var textColor = System.Drawing.Color.FromArgb(0x0F, 0x17, 0x2A);
-            using var textBrush = new SolidBrush(textColor);
-            using var font = new Font("Segoe UI", 16, System.Drawing.FontStyle.Bold);
-            
-            var textSize = g.MeasureString("V", font);
-            var textX = (size - textSize.Width) / 2;
-            var textY = (size - textSize.Height) / 2;
-            g.DrawString("V", font, textBrush, textX, textY);
-            
-            var hIcon = bitmap.GetHicon();
-            return Icon.FromHandle(hIcon);
-        }
+            var streamInfo = Application.GetResourceStream(
+                new Uri("pack://application:,,,/FxVolatilityImport;component/app.ico"));
 
-        private static GraphicsPath CreateRoundedRectangle(Rectangle rect, int radius)
-        {
-            var path = new GraphicsPath();
-            int diameter = radius * 2;
-            
-            path.AddArc(rect.X, rect.Y, diameter, diameter, 180, 90);
-            path.AddArc(rect.Right - diameter, rect.Y, diameter, diameter, 270, 90);
-            path.AddArc(rect.Right - diameter, rect.Bottom - diameter, diameter, diameter, 0, 90);
-            path.AddArc(rect.X, rect.Bottom - diameter, diameter, diameter, 90, 90);
-            path.CloseFigure();
-            
-            return path;
+            var ms = new MemoryStream();
+            streamInfo!.Stream.CopyTo(ms);
+            ms.Position = 0;
+            return new Icon(ms);
         }
 
         private ContextMenu CreateTrayContextMenu()

@@ -11,17 +11,17 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-	  <Content Include="app.ico" />
+		<Resource Include="app.ico" />
 	</ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Hardcodet.NotifyIcon.Wpf" Version="1.1.0" />
-  </ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="Hardcodet.NotifyIcon.Wpf" Version="1.1.0" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <Reference Include="Bloomberglp.Blpapi">
-      <HintPath>\\nas-se11.fspa.myntet.se\MUREX\FX\libs\Bloomberg\Bloomberglp.Blpapi.dll</HintPath>
-    </Reference>
-  </ItemGroup>
+	<ItemGroup>
+		<Reference Include="Bloomberglp.Blpapi">
+			<HintPath>\\nas-se11.fspa.myntet.se\MUREX\PROD\FX\libs\Bloomberg\Bloomberglp.Blpapi.dll</HintPath>
+		</Reference>
+	</ItemGroup>
 
 </Project>
