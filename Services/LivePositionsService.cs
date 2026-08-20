@@ -27,7 +27,7 @@ namespace FxVolatilityImport.Services
             var lines = File.ReadAllLines(_filePath);
             if (lines.Length < 2) return pairs.ToList();
 
-            var headers = lines[0].Split(';');
+            var headers = SplitCsvLine(lines[0]);
 
             int currPairIndex = Array.FindIndex(headers, h =>
                 h.Trim().Equals("CURR_PAIR", StringComparison.OrdinalIgnoreCase));
@@ -40,7 +40,10 @@ namespace FxVolatilityImport.Services
 
             for (int i = 1; i < lines.Length; i++)
             {
-                var cols = lines[i].Split(';');
+                if (string.IsNullOrWhiteSpace(lines[i]))
+                    continue;
+
+                var cols = SplitCsvLine(lines[i]);
 
                 if (cols.Length <= Math.Max(currPairIndex, typologyIndex))
                     continue;
@@ -67,6 +70,63 @@ namespace FxVolatilityImport.Services
             return File.Exists(_filePath)
                 ? File.GetLastWriteTime(_filePath)
                 : DateTime.MinValue;
+        }
+
+        /// <summary>
+        /// Delar en CSV-rad på ';' men respekterar citattecken, så att ett fält som
+        /// t.ex. "Bank; Stockholm" inte förskjuter alla efterföljande kolumner
+        /// (vilket annars kan få TYPOLOGY/CURR_PAIR att läsas ur fel kolumn).
+        /// </summary>
+        private static string[] SplitCsvLine(string line)
+        {
+            var fields = new List<string>();
+            var current = new System.Text.StringBuilder();
+            bool inQuotes = false;
+
+            for (int i = 0; i < line.Length; i++)
+            {
+                char c = line[i];
+
+                if (inQuotes)
+                {
+                    if (c == '"')
+                    {
+                        // Dubbelt citattecken inuti ett citerat fält = ett bokstavligt "
+                        if (i + 1 < line.Length && line[i + 1] == '"')
+                        {
+                            current.Append('"');
+                            i++;
+                        }
+                        else
+                        {
+                            inQuotes = false;
+                        }
+                    }
+                    else
+                    {
+                        current.Append(c);
+                    }
+                }
+                else
+                {
+                    if (c == '"')
+                    {
+                        inQuotes = true;
+                    }
+                    else if (c == ';')
+                    {
+                        fields.Add(current.ToString());
+                        current.Clear();
+                    }
+                    else
+                    {
+                        current.Append(c);
+                    }
+                }
+            }
+
+            fields.Add(current.ToString());
+            return fields.ToArray();
         }
     }
 }
