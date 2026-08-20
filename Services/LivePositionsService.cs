@@ -1,4 +1,4 @@
-﻿// Services/LivePositionsService.cs
+// Services/LivePositionsService.cs
 using System.IO;
 
 namespace FxVolatilityImport.Services
@@ -7,6 +7,15 @@ namespace FxVolatilityImport.Services
     {
         private readonly string _filePath =
             @"\\sto-file23.fspa.myntet.se\NTSHARE\MX3\FXD_LIVE_OPTIONS\fxd_live_opt.csv";
+
+        // Endast dessa typologier ger upphov till volatilitetshämtning.
+        // Allt annat (t.ex. FX: Spot Forward) ignoreras.
+        private static readonly HashSet<string> _allowedTypologies = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "FXD: Simple Option",
+            "FXD: Barrier Option",
+            "FXD: Touch Rebate",
+        };
 
         public List<string> GetUniqueCurrencyPairs()
         {
@@ -38,7 +47,7 @@ namespace FxVolatilityImport.Services
 
                 var typology = cols[typologyIndex].Trim();
 
-                if (typology.Equals("FX: Spot Forward", StringComparison.OrdinalIgnoreCase))
+                if (!_allowedTypologies.Contains(typology))
                     continue;
 
                 var pair = cols[currPairIndex].Trim();
