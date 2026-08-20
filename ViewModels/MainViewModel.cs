@@ -18,6 +18,8 @@ namespace FxVolatilityImport.ViewModels
         private readonly BloombergService _bbgService = new();
         private readonly Mx3ExportService _exportService = new();
         private readonly SettingsService _settingsService = new();
+        private readonly SharedSettingsService _sharedSettings = new();
+        private readonly DataValidator _validator = new();
         private readonly DispatcherTimer _timer;
         private readonly DispatcherTimer _successFadeTimer;
         private readonly FileSystemWatcher _fileWatcher;
@@ -53,6 +55,13 @@ namespace FxVolatilityImport.ViewModels
         {
             get => _lastImportTime;
             set { _lastImportTime = value; OnPropertyChanged(); }
+        }
+
+        private string _validationStatus = "";
+        public string ValidationStatus
+        {
+            get => _validationStatus;
+            set { _validationStatus = value; OnPropertyChanged(); }
         }
 
         private bool _autoImportEnabled = true;
@@ -103,6 +112,15 @@ namespace FxVolatilityImport.ViewModels
             ImportSmileCommand = new RelayCommand(_ => ExportSmile(), _ => VolatilityData.Any());
             RefreshPairsCommand = new RelayCommand(_ => RefreshCurrencyPairs());
             ConnectCommand = new RelayCommand(_ => Connect());
+
+            // Lyssna på ändringar från andra användare (delade sources på nätverksdisk)
+            _sharedSettings.SettingsChanged += OnSharedSettingsChanged;
+
+            // Bloomberg status events (reconnect-meddelanden m.m.)
+            _bbgService.StatusChanged += (s, msg) =>
+            {
+                Application.Current.Dispatcher.Invoke(() => StatusText = msg);
+            };
 
             LoadSettings();
 
@@ -275,11 +293,11 @@ namespace FxVolatilityImport.ViewModels
             try
             {
                 var currentModified = GetPositionsFileLastModified();
-                
+
                 if (currentModified > _lastPositionsFileCheck)
                 {
                     _lastPositionsFileCheck = currentModified;
-                    
+
                     // Vänta lite så filen hinner skrivas klart
                     Task.Delay(500).ContinueWith(_ =>
                     {
@@ -398,7 +416,7 @@ namespace FxVolatilityImport.ViewModels
             }
             else
             {
-                StatusText = "Scheduled import failed - no data loaded";
+                StatusText = "Scheduled import failed - no data loaded or validation failed";
             }
         }
 
@@ -415,11 +433,61 @@ namespace FxVolatilityImport.ViewModels
         {
             // Uppdatera tidsstämpeln och vänta lite innan refresh
             _lastPositionsFileCheck = DateTime.Now;
-            
+
             Task.Delay(1000).ContinueWith(_ =>
             {
                 Application.Current.Dispatcher.Invoke(RefreshCurrencyPairs);
             });
+        }
+
+        /// <summary>
+        /// Anropas när en annan användare ändrat en source på nätverksdisken.
+        /// Uppdaterar lokala CurrencyPairViewModels utan att bygga om listan.
+        /// </summary>
+        private void OnSharedSettingsChanged(object? sender, EventArgs e)
+        {
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                StatusText = "Source settings updated by another user, syncing...";
+                foreach (var pair in CurrencyPairs)
+                {
+                    var saved = _sharedSettings.GetPairSource(pair.CurrencyPair);
+                    if (saved != null)
+                    {
+                        pair.AtmSource = saved.AtmSource;
+                        pair.SmileSource = saved.SmileSource;
+                    }
+                }
+            });
+        }
+
+        /// <summary>
+        /// Anropas när användaren själv ändrar ATM/Smile source för ett par.
+        /// Sparar till den delade nätverksfilen så alla users "minns" senaste val,
+        /// oavsett om paret senare försvinner och kommer tillbaka i live positions.
+        /// </summary>
+        private void OnPairSourceChanged(CurrencyPairViewModel pair)
+        {
+            _sharedSettings.UpdatePairSource(pair.CurrencyPair, pair.AtmSource, pair.SmileSource);
+            StatusText = $"Source updated for {pair.CurrencyPair} ({pair.AtmSource}/{pair.SmileSource})";
+        }
+
+        private CurrencyPairViewModel CreatePairViewModel(string pairName, bool isLive)
+        {
+            // Source hämtas från den delade nätverksfilen (gemensamt "minne" mellan users
+            // och över tid, oavsett om paret tillfälligt saknar live position)
+            var sharedSource = _sharedSettings.GetPairSource(pairName);
+
+            var vm = new CurrencyPairViewModel
+            {
+                CurrencyPair = pairName,
+                AtmSource = sharedSource?.AtmSource ?? "BGN",
+                SmileSource = sharedSource?.SmileSource ?? "BGN",
+                IsLive = isLive
+            };
+
+            vm.SourceChanged += OnPairSourceChanged;
+            return vm;
         }
 
         public void RefreshCurrencyPairs()
@@ -432,7 +500,10 @@ namespace FxVolatilityImport.ViewModels
                 .Where(p => !livePairs.Contains(p.CurrencyPair))
                 .ToList();
             foreach (var p in toRemove)
+            {
+                p.SourceChanged -= OnPairSourceChanged;
                 CurrencyPairs.Remove(p);
+            }
 
             // Lägg till nya par
             foreach (var pair in livePairs)
@@ -442,13 +513,7 @@ namespace FxVolatilityImport.ViewModels
                     var existing = settings.CurrencyPairs
                         .FirstOrDefault(c => c.CurrencyPair == pair);
 
-                    CurrencyPairs.Add(new CurrencyPairViewModel
-                    {
-                        CurrencyPair = pair,
-                        AtmSource = existing?.AtmSource ?? "BGN",
-                        SmileSource = existing?.SmileSource ?? "BGN",
-                        IsLive = existing?.IsLive ?? true
-                    });
+                    CurrencyPairs.Add(CreatePairViewModel(pair, existing?.IsLive ?? true));
                 }
             }
 
@@ -492,11 +557,23 @@ namespace FxVolatilityImport.ViewModels
 
                 var data = await Task.Run(() => _bbgService.LoadVolatilityData(configs));
 
+                var validation = _validator.Validate(data);
+                ValidationStatus = validation.Summary;
+
+                if (!validation.IsValid)
+                {
+                    VolatilityData.Clear();
+                    StatusText = $"Data validation failed: {validation.Errors.First()}";
+                    return;
+                }
+
                 VolatilityData.Clear();
                 foreach (var item in data)
                     VolatilityData.Add(item);
 
-                StatusText = $"Loaded {data.Count} tenor points at {DateTime.Now:HH:mm:ss}";
+                StatusText = $"Loaded {data.Count} tenor points at {DateTime.Now:HH:mm:ss}"
+                    + (validation.Warnings.Count > 0 ? $" ({validation.Warnings.Count} warning(s))" : "");
+
                 SaveSettings();
             }
             catch (Exception ex)
@@ -516,6 +593,13 @@ namespace FxVolatilityImport.ViewModels
 
         private void ExportAtm()
         {
+            var validation = _validator.Validate(VolatilityData.ToList());
+            if (!validation.IsValid)
+            {
+                StatusText = $"Cannot export ATM - validation errors: {validation.Errors.First()}";
+                return;
+            }
+
             try
             {
                 _exportService.ExportAtm(VolatilityData.ToList());
@@ -532,6 +616,13 @@ namespace FxVolatilityImport.ViewModels
 
         private void ExportSmile()
         {
+            var validation = _validator.Validate(VolatilityData.ToList());
+            if (!validation.IsValid)
+            {
+                StatusText = $"Cannot export Smile - validation errors: {validation.Errors.First()}";
+                return;
+            }
+
             try
             {
                 _exportService.ExportSmile(VolatilityData.ToList());
@@ -549,19 +640,13 @@ namespace FxVolatilityImport.ViewModels
         private void LoadSettings()
         {
             var settings = _settingsService.Load();
-            
+
             // Ladda och sortera direkt
             var sorted = settings.CurrencyPairs.OrderBy(c => c.CurrencyPair).ToList();
-            
+
             foreach (var config in sorted)
             {
-                CurrencyPairs.Add(new CurrencyPairViewModel
-                {
-                    CurrencyPair = config.CurrencyPair,
-                    AtmSource = config.AtmSource,
-                    SmileSource = config.SmileSource,
-                    IsLive = config.IsLive
-                });
+                CurrencyPairs.Add(CreatePairViewModel(config.CurrencyPair, config.IsLive));
             }
         }
 
@@ -586,6 +671,12 @@ namespace FxVolatilityImport.ViewModels
             _successFadeTimer.Stop();
             _fileWatcher.Dispose();
             _positionsFileWatcher.Dispose();
+            _sharedSettings.SettingsChanged -= OnSharedSettingsChanged;
+            _sharedSettings.Dispose();
+
+            foreach (var p in CurrencyPairs)
+                p.SourceChanged -= OnPairSourceChanged;
+
             _bbgService.Dispose();
         }
 
