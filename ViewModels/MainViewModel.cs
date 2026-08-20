@@ -122,7 +122,10 @@ namespace FxVolatilityImport.ViewModels
                 Application.Current.Dispatcher.Invoke(() => StatusText = msg);
             };
 
-            LoadSettings();
+            // Bygg valutaparslistan direkt mot den färska, typology-filtrerade CSV-filen
+            // vid uppstart - annars visas stale par från settings.json (t.ex. gamla NDF-par
+            // som sparades innan typology-whitelisten fanns).
+            RefreshCurrencyPairs();
 
             // Timer varje sekund för schemalagd körning OCH för att polla filstatus
             _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
@@ -634,19 +637,6 @@ namespace FxVolatilityImport.ViewModels
             catch (Exception ex)
             {
                 StatusText = $"Smile export error: {ex.Message}";
-            }
-        }
-
-        private void LoadSettings()
-        {
-            var settings = _settingsService.Load();
-
-            // Ladda och sortera direkt
-            var sorted = settings.CurrencyPairs.OrderBy(c => c.CurrencyPair).ToList();
-
-            foreach (var config in sorted)
-            {
-                CurrencyPairs.Add(CreatePairViewModel(config.CurrencyPair, config.IsLive));
             }
         }
 
