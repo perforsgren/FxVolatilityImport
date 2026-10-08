@@ -508,7 +508,18 @@
     <!-- ============================================================
          TOOLTIP
          ============================================================ -->
+    <!-- Tooltips bryter rader i stället för att klippas vid MaxWidth.
+         Radbrytningen behövs på två ställen:
+         - Style.Resources: för tooltips med eget innehåll (<Border.ToolTip><StackPanel><TextBlock …>),
+           där TextBlock slår upp stilar via ToolTip-elementet.
+         - ContentPresenter.Resources: för tooltips som bara är en sträng (ToolTip="…"),
+           där TextBlock skapas inne i mallen. -->
     <Style TargetType="ToolTip">
+        <Style.Resources>
+            <Style TargetType="TextBlock">
+                <Setter Property="TextWrapping" Value="Wrap"/>
+            </Style>
+        </Style.Resources>
         <Setter Property="Foreground" Value="{StaticResource Brush.Text}"/>
         <Setter Property="FontSize" Value="11.5"/>
         <Setter Property="HasDropShadow" Value="True"/>
@@ -520,7 +531,7 @@
                             BorderThickness="1"
                             CornerRadius="7"
                             Padding="10,7"
-                            MaxWidth="420">
+                            MaxWidth="440">
                         <ContentPresenter>
                             <ContentPresenter.Resources>
                                 <Style TargetType="TextBlock">

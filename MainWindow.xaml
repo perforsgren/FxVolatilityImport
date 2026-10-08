@@ -103,8 +103,9 @@
                                 BorderBrush="{Binding SchedulerLevel, Converter={StaticResource LevelBrush}, ConverterParameter=Border}">
                             <Border.ToolTip>
                                 <StackPanel>
-                                    <TextBlock Text="{Binding SchedulerDetail}"/>
-                                    <TextBlock Margin="0,6,0,0" Text="{Binding LastScheduledText}" Foreground="{StaticResource Brush.TextMuted}"/>
+                                    <TextBlock Text="{Binding SchedulerDetail}" TextWrapping="Wrap"/>
+                                    <TextBlock Margin="0,6,0,0" Text="{Binding LastScheduledText}" TextWrapping="Wrap"
+                                               Foreground="{StaticResource Brush.TextMuted}"/>
                                 </StackPanel>
                             </Border.ToolTip>
                             <StackPanel Orientation="Horizontal">
@@ -389,8 +390,9 @@
                         <Border Grid.Column="6" Style="{StaticResource Card}" Padding="16,12">
                             <Border.ToolTip>
                                 <StackPanel>
-                                    <TextBlock Text="{Binding ScheduleDescription}" FontWeight="SemiBold"/>
-                                    <TextBlock Margin="0,4,0,0" Text="Run by the master instance only. The switch pauses or resumes scheduled imports for all users."/>
+                                    <TextBlock Text="{Binding ScheduleDescription}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                    <TextBlock Margin="0,4,0,0" TextWrapping="Wrap"
+                                               Text="Run by the master instance only. The switch pauses or resumes scheduled imports for all users."/>
                                 </StackPanel>
                             </Border.ToolTip>
                             <Grid>
