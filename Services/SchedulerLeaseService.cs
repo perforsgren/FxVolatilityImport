@@ -164,6 +164,7 @@ namespace FxVolatilityImport.Services
                 AcquiredAt = DateTime.Now,
                 Heartbeat = DateTime.Now,
                 LastSuccessfulSlot = previous?.LastSuccessfulSlot,
+                LastRunSlot = previous?.LastRunSlot,
                 LastRunAt = previous?.LastRunAt,
                 LastRunOk = previous?.LastRunOk ?? false,
                 LastRunSummary = previous?.LastRunSummary ?? ""
@@ -294,6 +295,7 @@ namespace FxVolatilityImport.Services
                 if (ok)
                     _info.LastSuccessfulSlot = slot;
                 _info.LastRunAt = DateTime.Now;
+                _info.LastRunSlot = slot;
                 _info.LastRunOk = ok;
                 _info.LastRunSummary = summary;
 

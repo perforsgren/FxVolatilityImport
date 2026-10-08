@@ -46,7 +46,15 @@ namespace FxVolatilityImport.ViewModels
         private DateTime? _attemptSlot;
         private int _attemptCount;
         private DateTime _lastAttemptAt;
+        private DateTime? _skippedSlot;
         private bool _scheduledRunActive;
+
+        // Senaste "load & import" som väntar på att MX3 ska läsa in filerna
+        private PendingRun? _pendingRun;
+
+        private sealed record RunResult(bool Ok, string Summary, bool AtmWritten, bool SmileWritten, DateTime WrittenAt);
+
+        private sealed record PendingRun(string Label, DateTime? Slot, string Summary, DateTime WrittenAt, bool Atm, bool Smile);
 
         private bool _started;
         private bool _disposed;
@@ -74,7 +82,7 @@ namespace FxVolatilityImport.ViewModels
             ImportSmileCommand = new AsyncRelayCommand(
                 () => RunExclusiveAsync(() => ExportCoreAsync(Mx3FileKind.Smile, "manual")), () => !IsBusy && HasData, LogCommandError);
             LoadAndImportCommand = new AsyncRelayCommand(
-                () => RunExclusiveAsync(() => LoadAndImportCoreAsync("manual")), () => !IsBusy, LogCommandError);
+                () => RunExclusiveAsync(RunManualImportAsync), () => !IsBusy, LogCommandError);
             RefreshPairsCommand = new AsyncRelayCommand(() => RefreshPairsAsync(manual: true), null, LogCommandError);
             ReconnectCommand = new AsyncRelayCommand(ReconnectAsync, null, LogCommandError);
             OpenLogFolderCommand = new RelayCommand(_ => OpenLogFolder());
@@ -322,8 +330,8 @@ namespace FxVolatilityImport.ViewModels
         }
 
         /// <summary>
-        /// Körs varje sekund. Bara master kör schemalagda importer. En slot körs om den har passerat,
-        /// ligger inom grace-fönstret och inte redan importerats utan fel (enligt scheduler.json, som delas
+        /// Körs varje sekund. Bara master kör schemalagda importer. En slot startas bara om den passerade
+        /// för högst 5 minuter sedan och inte redan lämnats över till MX3 (enligt scheduler.json, som delas
         /// mellan alla – så en ny master kör inte om en slot som den förra mastern redan klarat).
         /// </summary>
         private void CheckSchedule(DateTime now)
@@ -331,30 +339,30 @@ namespace FxVolatilityImport.ViewModels
             if (!_lease.IsMaster || !ScheduledImportsEnabled || _scheduledRunActive)
                 return;
 
-            var slot = ImportSchedule.LatestSlot(now);
-            if (slot == null || now - slot.Value > ImportSchedule.Grace)
-                return;
+            var (action, slot) = ImportSchedule.Evaluate(
+                now, _lease.LastSuccessfulSlot, _attemptSlot, _attemptCount, _lastAttemptAt);
 
-            var lastOk = _lease.LastSuccessfulSlot;
-            if (lastOk.HasValue && lastOk.Value >= slot.Value)
-                return;
-
-            if (_attemptSlot == slot)
+            switch (action)
             {
-                if (_attemptCount >= ImportSchedule.MaxAttemptsPerSlot)
-                    return;
-                if (now - _lastAttemptAt < ImportSchedule.RetryDelay)
-                    return;
-            }
-            else
-            {
-                _attemptSlot = slot;
-                _attemptCount = 0;
-            }
+                case SlotAction.Start:
+                    _attemptSlot = slot;
+                    _attemptCount = 1;
+                    _lastAttemptAt = now;
+                    _ = RunScheduledImportAsync(slot!.Value, _attemptCount);
+                    break;
 
-            _attemptCount++;
-            _lastAttemptAt = now;
-            _ = RunScheduledImportAsync(slot.Value, _attemptCount);
+                case SlotAction.Retry:
+                    _attemptCount++;
+                    _lastAttemptAt = now;
+                    _ = RunScheduledImportAsync(slot!.Value, _attemptCount);
+                    break;
+
+                case SlotAction.SkipTooLate when _skippedSlot != slot:
+                    _skippedSlot = slot;
+                    _log.Info($"Scheduled import {slot:HH:mm} skipped – more than {ImportSchedule.StartWindow.TotalMinutes:0} min have passed. " +
+                              $"Next scheduled import {ImportSchedule.NextSlot(now):HH:mm} (use Load & import all for an ad hoc import)");
+                    break;
+            }
         }
 
         private async Task RunScheduledImportAsync(DateTime slot, int attempt)
@@ -371,18 +379,29 @@ namespace FxVolatilityImport.ViewModels
                 IsBusy = true;
                 try
                 {
-                    _log.Info($"Scheduled import {slot:HH:mm} started" + (attempt > 1 ? $" (attempt {attempt})" : ""));
+                    var late = DateTime.Now - slot;
+                    _log.Info($"Scheduled import {slot:HH:mm} started" +
+                              (attempt > 1 ? $" (attempt {attempt})" : "") +
+                              (attempt == 1 && late > TimeSpan.FromSeconds(30) ? $" ({Mx3ImportMonitor.FormatDuration(late)} late)" : ""));
                     await RefreshPairsAsync(manual: false);
 
-                    var (ok, summary) = await LoadAndImportCoreAsync($"scheduled {slot:HH:mm}");
-                    await Task.Run(() => _lease.RecordRun(slot, ok, summary));
+                    var result = await LoadAndImportCoreAsync($"scheduled {slot:HH:mm}");
 
-                    if (ok)
-                        _log.Success($"Scheduled import {slot:HH:mm} done – {summary}");
-                    else if (attempt < ImportSchedule.MaxAttemptsPerSlot)
-                        _log.Error($"Scheduled import {slot:HH:mm} failed – {summary}. Retrying in {ImportSchedule.RetryDelay.TotalMinutes:0} min");
+                    if (result.Ok)
+                    {
+                        // Slotten räknas som klar när filerna lämnats över – annars skulle en ny master köra om den
+                        await Task.Run(() => _lease.RecordRun(slot, true, $"{result.Summary} · waiting for MX3"));
+                        _log.Info($"Scheduled import {slot:HH:mm}: files handed over to MX3 ({result.Summary}) – waiting for MX3 to import them");
+                        TrackMx3Completion($"Scheduled import {slot:HH:mm}", slot, result);
+                    }
                     else
-                        _log.Error($"Scheduled import {slot:HH:mm} failed – {summary}. No more retries for this slot");
+                    {
+                        await Task.Run(() => _lease.RecordRun(slot, false, result.Summary));
+                        if (attempt < ImportSchedule.MaxAttemptsPerSlot)
+                            _log.Error($"Scheduled import {slot:HH:mm} failed – {result.Summary}. Retrying in {ImportSchedule.RetryDelay.TotalMinutes:0} min");
+                        else
+                            _log.Error($"Scheduled import {slot:HH:mm} failed – {result.Summary}. No more retries for this slot");
+                    }
                 }
                 finally
                 {
@@ -592,11 +611,12 @@ namespace FxVolatilityImport.ViewModels
             }
         }
 
-        private async Task<(bool Ok, string Summary)> LoadAndImportCoreAsync(string trigger)
+        private async Task<RunResult> LoadAndImportCoreAsync(string trigger)
         {
             if (!await LoadCoreAsync(trigger))
-                return (false, "load from Bloomberg failed");
+                return new RunResult(false, "load from Bloomberg failed", false, false, DateTime.Now);
 
+            var writtenAt = DateTime.Now;
             var atmOk = await ExportCoreAsync(Mx3FileKind.Atm, trigger);
             var smileOk = await ExportCoreAsync(Mx3FileKind.Smile, trigger);
 
@@ -606,9 +626,62 @@ namespace FxVolatilityImport.ViewModels
             var summary = $"{imported} pairs" + (excluded > 0 ? $", {excluded} excluded" : "");
 
             if (atmOk && smileOk)
-                return (true, summary);
+                return new RunResult(true, summary, true, true, writtenAt);
 
-            return (false, $"{(atmOk ? "" : "ATM ")}{(smileOk ? "" : "Smile ")}export failed".Trim());
+            return new RunResult(false, $"{(atmOk ? "" : "ATM ")}{(smileOk ? "" : "Smile ")}export failed".Trim(),
+                                 atmOk, smileOk, writtenAt);
+        }
+
+        /// <summary>"Load &amp; import all" från knappen eller widgeten (ad hoc, vilken användare som helst).</summary>
+        private async Task RunManualImportAsync()
+        {
+            _log.Info("Manual import started");
+            var result = await LoadAndImportCoreAsync("manual");
+
+            if (result.AtmWritten || result.SmileWritten)
+            {
+                _log.Info($"Manual import: files handed over to MX3 ({result.Summary}) – waiting for MX3 to import them");
+                TrackMx3Completion("Manual import", null, result);
+            }
+            else
+            {
+                _log.Error($"Manual import failed – {result.Summary}");
+            }
+        }
+
+        /// <summary>Börjar följa en körning tills MX3 har läst in (raderat) de filer den skrev.</summary>
+        private void TrackMx3Completion(string label, DateTime? slot, RunResult result)
+        {
+            if (_pendingRun != null)
+                _log.Info($"{_pendingRun.Label} was still waiting for MX3 – now following {label} instead");
+
+            _pendingRun = new PendingRun(label, slot, result.Summary, result.WrittenAt, result.AtmWritten, result.SmileWritten);
+            CheckRunCompletion();
+        }
+
+        /// <summary>Körs när importstatusen ändras: är alla filer från senaste körningen inlästa i MX3?</summary>
+        private void CheckRunCompletion()
+        {
+            var run = _pendingRun;
+            if (run == null)
+                return;
+
+            static bool Imported(Mx3FileStatus status, DateTime writtenAt)
+                => !status.Pending && status.LastCompleted is DateTime done && done >= writtenAt;
+
+            var atmDone = !run.Atm || Imported(_importMonitor.GetStatus(Mx3FileKind.Atm), run.WrittenAt);
+            var smileDone = !run.Smile || Imported(_importMonitor.GetStatus(Mx3FileKind.Smile), run.WrittenAt);
+            if (!atmDone || !smileDone)
+                return;
+
+            _pendingRun = null;
+            var now = DateTime.Now;
+            var files = run.Atm && run.Smile ? "ATM and Smile" : run.Atm ? "ATM" : "Smile";
+            _log.Success($"{run.Label} completed – MX3 has imported {files} " +
+                         $"({Mx3ImportMonitor.FormatDuration(now - run.WrittenAt)} after hand-over)");
+
+            if (run.Slot is DateTime slot)
+                _ = Task.Run(() => _lease.RecordRun(slot, true, $"{run.Summary} · in MX3 {now:HH:mm}"));
         }
 
         // =====================================================================
@@ -888,10 +961,11 @@ namespace FxVolatilityImport.ViewModels
                         ? $"Runs on {holder.User}'s PC"
                         : "No master running";
 
-            if (holder?.LastRunAt is DateTime lastRun)
+            // Visa slotten (10:15), inte när den kördes – summary säger om MX3 har läst in filerna
+            if ((holder?.LastRunSlot ?? holder?.LastRunAt) is DateTime lastRun)
             {
                 var day = lastRun.Date == now.Date ? "" : lastRun.ToString("ddd ", CultureInfo.InvariantCulture);
-                LastScheduledText = holder.LastRunOk
+                LastScheduledText = holder!.LastRunOk
                     ? $"Last {day}{lastRun:HH:mm} ✓ {holder.LastRunSummary}"
                     : $"Last {day}{lastRun:HH:mm} ✗ {holder.LastRunSummary}";
                 LastScheduledLevel = holder.LastRunOk ? UiLevel.Good : UiLevel.Error;
@@ -919,6 +993,8 @@ namespace FxVolatilityImport.ViewModels
                 _successFadeTimer.Start();
             }
             IsImporting = importing;
+
+            CheckRunCompletion();
         }
 
         private static (string Text, UiLevel Level) DescribeImport(Mx3FileStatus status)

@@ -1,11 +1,21 @@
 // Services/ImportSchedule.cs
 namespace FxVolatilityImport.Services
 {
+    public enum SlotAction
+    {
+        /// <summary>Inget att göra just nu.</summary>
+        None,
+        /// <summary>Starta första körningen för slotten.</summary>
+        Start,
+        /// <summary>Förra försöket för slotten misslyckades – försök igen.</summary>
+        Retry,
+        /// <summary>Slotten passerade för länge sedan för att startas (t.ex. appen startades 10:26) – hoppa över den.</summary>
+        SkipTooLate
+    }
+
     /// <summary>
     /// Schemat för de automatiska importerna: vardagar kl HH:15, från 08:15 till och med 16:15.
-    /// Ren logik utan tillstånd. Master-instansen jämför "senaste passerade slot" mot
-    /// "senaste lyckade slot" i scheduler.json, så en slot missas inte om timern driver
-    /// och körs inte två gånger om master byts.
+    /// Ren logik utan tillstånd, så den går att testa. Master-instansen anropar Evaluate varje sekund.
     /// </summary>
     public static class ImportSchedule
     {
@@ -13,8 +23,15 @@ namespace FxVolatilityImport.Services
         public const int LastHour = 16;
         public const int Minute = 15;
 
-        /// <summary>Hur länge efter en slot den fortfarande får köras (efter byte av master, Bloomberg-avbrott m.m.).</summary>
-        public static readonly TimeSpan Grace = TimeSpan.FromMinutes(15);
+        /// <summary>
+        /// Hur sent efter en slot den FÖRSTA körningen får starta. Täcker att timern driver, att Bloomberg
+        /// precis återanslutit och byte av master (tar ca 10 s, eller ca 3 min om masterns Bloomberg dött).
+        /// Startas appen senare än så (t.ex. 10:26) körs inte 10:15 – nästa körning blir 11:15.
+        /// </summary>
+        public static readonly TimeSpan StartWindow = TimeSpan.FromMinutes(5);
+
+        /// <summary>Hur länge ett misslyckat försök får göras om.</summary>
+        public static readonly TimeSpan RetryWindow = TimeSpan.FromMinutes(15);
 
         /// <summary>Max antal försök per slot, och minsta tid mellan försöken.</summary>
         public const int MaxAttemptsPerSlot = 3;
@@ -56,6 +73,42 @@ namespace FxVolatilityImport.Services
                         return slot;
                 }
             }
+        }
+
+        /// <summary>
+        /// Avgör vad master ska göra just nu.
+        /// </summary>
+        /// <param name="now">Aktuell tid.</param>
+        /// <param name="lastSuccessfulSlot">Senaste slot som importerats utan fel (delas via scheduler.json).</param>
+        /// <param name="attemptedSlot">Slot som denna instans senast försökte köra.</param>
+        /// <param name="attempts">Antal försök denna instans gjort för attemptedSlot.</param>
+        /// <param name="lastAttemptAt">När senaste försöket gjordes.</param>
+        public static (SlotAction Action, DateTime? Slot) Evaluate(
+            DateTime now,
+            DateTime? lastSuccessfulSlot,
+            DateTime? attemptedSlot,
+            int attempts,
+            DateTime lastAttemptAt)
+        {
+            var slot = LatestSlot(now);
+            if (slot == null)
+                return (SlotAction.None, null);
+
+            if (lastSuccessfulSlot.HasValue && lastSuccessfulSlot.Value >= slot.Value)
+                return (SlotAction.None, slot);
+
+            var age = now - slot.Value;
+
+            if (attemptedSlot == slot)
+            {
+                if (attempts >= MaxAttemptsPerSlot || age > RetryWindow || now - lastAttemptAt < RetryDelay)
+                    return (SlotAction.None, slot);
+                return (SlotAction.Retry, slot);
+            }
+
+            return age <= StartWindow
+                ? (SlotAction.Start, slot)
+                : (SlotAction.SkipTooLate, slot);
         }
     }
 }

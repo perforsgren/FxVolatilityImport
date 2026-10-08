@@ -15,6 +15,9 @@ namespace FxVolatilityImport.Models
         /// <summary>Senaste slot (t.ex. 10:15) som importerats utan fel. Förhindrar dubbelkörning vid byte av master.</summary>
         public DateTime? LastSuccessfulSlot { get; set; }
 
+        /// <summary>Slotten (t.ex. 10:15) som senaste körning gällde.</summary>
+        public DateTime? LastRunSlot { get; set; }
+
         public DateTime? LastRunAt { get; set; }
         public bool LastRunOk { get; set; }
         public string LastRunSummary { get; set; } = "";
