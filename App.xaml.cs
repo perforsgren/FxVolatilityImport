@@ -1,3 +1,4 @@
+// App.xaml.cs
 using System.Drawing;
 using System.IO;
 using System.Windows;
@@ -25,6 +26,18 @@ namespace FxVolatilityImport
         {
             base.OnStartup(e);
 
+            // Ett oväntat fel i UI-tråden ska loggas – inte stänga appen (då tappar vi master-rollen och schemat)
+            DispatcherUnhandledException += (_, args) =>
+            {
+                LogUnhandled(args.Exception);
+                args.Handled = true;
+            };
+            TaskScheduler.UnobservedTaskException += (_, args) =>
+            {
+                LogUnhandled(args.Exception);
+                args.SetObserved();
+            };
+
             _viewModel = new MainViewModel();
 
             // Ladda ikon från app.ico – väljer bästa ram för varje användningsfall
@@ -41,6 +54,27 @@ namespace FxVolatilityImport
 
             _mainWindow = new MainWindow { DataContext = _viewModel, Icon = AppIcon };
             _mainWindow.Show();
+
+            // Läser delade inställningar, positionsfil och startar Bloomberg/master/importbevakning
+            _ = _viewModel.StartAsync();
+        }
+
+        private static void LogUnhandled(Exception ex)
+        {
+            try
+            {
+                var dir = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "FxVolatilityImport", "logs");
+                Directory.CreateDirectory(dir);
+                File.AppendAllText(
+                    Path.Combine(dir, $"{DateTime.Now:yyyyMMdd}.log"),
+                    $"{DateTime.Now:HH:mm:ss.fff} [Error  ] Unhandled: {ex}{Environment.NewLine}");
+            }
+            catch
+            {
+                // ignorera
+            }
         }
 
         /// <summary>
@@ -100,7 +134,7 @@ namespace FxVolatilityImport
             _widgetWindow?.Hide();
             _mainWindow?.Show();
             _mainWindow?.Activate();
-            if (_mainWindow != null)
+            if (_mainWindow != null && _mainWindow.WindowState == WindowState.Minimized)
                 _mainWindow.WindowState = WindowState.Normal;
         }
 
@@ -135,6 +169,8 @@ namespace FxVolatilityImport
 
         private void Application_Exit(object sender, ExitEventArgs e)
         {
+            // Även vid utloggning/avstängning av Windows – släpper master-rollen snyggt
+            _viewModel?.Dispose();
             _trayIcon?.Dispose();
         }
     }

@@ -1,52 +1,43 @@
-﻿// Services/Mx3ExportService.cs
+// Services/Mx3ExportService.cs
 using System.IO;
+using System.Globalization;
 using System.Xml;
 using FxVolatilityImport.Models;
 
 namespace FxVolatilityImport.Services
 {
+    /// <summary>
+    /// Skriver MX3-importfilerna i exakt samma format som legacy-appen.
+    /// Alla tal formateras med InvariantCulture – annars blir det "7,441" på en dator med svenska
+    /// regionala inställningar, vilket MX3 inte kan läsa.
+    /// </summary>
     public class Mx3ExportService
     {
-        private readonly string _outputDir =
-            @"\\sto-file23.fspa.myntet.se\NTSHARE\MX3_INTRA_DAY_MARKETDATA\";
+        public const string DefaultOutputDir = @"\\sto-file23.fspa.myntet.se\NTSHARE\MX3_INTRA_DAY_MARKETDATA\";
+        public const string AtmFileName = "update_fxvols_ps.xml";
+        public const string SmileFileName = "update_fxvols_smile.xml";
 
-        private readonly string[] _tenors =
-            { "ON", "1W", "2W", "1M", "2M", "3M", "6M", "1Y", "2Y", "3Y" };
+        private const string Xmlns = "XmlCache";
+        private const string Xmlmp = "mx.MarketParameters";
 
-        public string AtmFilePath => Path.Combine(_outputDir, "update_fxvols_ps.xml");
-        public string SmileFilePath => Path.Combine(_outputDir, "update_fxvols_smile.xml");
+        private readonly string _outputDir;
 
-        public void ExportAtm(List<VolatilityTenor> data)
+        public Mx3ExportService(string? outputDir = null)
         {
+            _outputDir = outputDir ?? DefaultOutputDir;
+        }
+
+        public string OutputDir => _outputDir;
+        public string AtmFilePath => Path.Combine(_outputDir, AtmFileName);
+        public string SmileFilePath => Path.Combine(_outputDir, SmileFileName);
+
+        public void ExportAtm(IReadOnlyList<VolatilityTenor> data)
+        {
+            const string xmlfx = "mx.MarketParameters.Forex";
+            const string xmlfxvl = "mx.MarketParameters.Forex.Volatilities";
+
             var xmlDoc = new XmlDocument();
-            string xmlns = "XmlCache";
-            string xmlmp = "mx.MarketParameters";
-            string xmlfx = "mx.MarketParameters.Forex";
-            string xmlfxvl = "mx.MarketParameters.Forex.Volatilities";
-
-            var headNode = xmlDoc.CreateElement("xc", "XmlCache", xmlns);
-            var headAttr = xmlDoc.CreateAttribute("xc", "action", xmlns);
-            headAttr.Value = "Update";
-            headNode.Attributes.Append(headAttr);
-            xmlDoc.AppendChild(headNode);
-
-            var areaNode = xmlDoc.CreateElement("xc", "XmlCacheArea", xmlns);
-            var areaAttr = xmlDoc.CreateAttribute("xc", "value", xmlns);
-            areaAttr.Value = "MarketParameters";
-            areaNode.Attributes.Append(areaAttr);
-            headNode.AppendChild(areaNode);
-
-            var nickNode = xmlDoc.CreateElement("mp", "nickName", xmlmp);
-            var nickAttr = xmlDoc.CreateAttribute("xc", "value", xmlns);
-            nickAttr.Value = "FO";
-            nickNode.Attributes.Append(nickAttr);
-            areaNode.AppendChild(nickNode);
-
-            var dateNode = xmlDoc.CreateElement("mp", "date", xmlmp);
-            var dateAttr = xmlDoc.CreateAttribute("xc", "value", xmlns);
-            dateAttr.Value = DateTime.Today.ToString("yyyyMMdd");
-            dateNode.Attributes.Append(dateAttr);
-            nickNode.AppendChild(dateNode);
+            var dateNode = CreateHeader(xmlDoc);
 
             var forexNode = xmlDoc.CreateElement("fx", "forex", xmlfx);
             dateNode.AppendChild(forexNode);
@@ -54,32 +45,24 @@ namespace FxVolatilityImport.Services
             var volNode = xmlDoc.CreateElement("fxvl", "volatility", xmlfxvl);
             forexNode.AppendChild(volNode);
 
-            var pairs = data.Select(d => d.CurrencyPair).Distinct().ToList();
-
-            foreach (var pair in pairs)
+            foreach (var pair in data.Select(d => d.CurrencyPair).Distinct())
             {
                 var ccyNode = xmlDoc.CreateElement("fxvl", "pair", xmlfxvl);
-                var ccyAttr = xmlDoc.CreateAttribute("xc", "value", xmlns);
-                ccyAttr.Value = CurrencyPairMapper.ToMx3Format(pair);
-                ccyNode.Attributes.Append(ccyAttr);
+                AddAttribute(xmlDoc, ccyNode, "value", CurrencyPairMapper.ToMx3Format(pair));
                 volNode.AppendChild(ccyNode);
 
-                var tenorData = data.Where(d => d.CurrencyPair == pair).ToList();
-
-                foreach (var tenor in tenorData)
+                foreach (var tenor in data.Where(d => d.CurrencyPair == pair))
                 {
                     var tenorNode = xmlDoc.CreateElement("fxvl", "maturity", xmlfxvl);
-                    var tenorAttr = xmlDoc.CreateAttribute("xc", "value", xmlns);
-                    tenorAttr.Value = tenor.Tenor == "ON" ? "O/N" : tenor.Tenor;
-                    tenorNode.Attributes.Append(tenorAttr);
+                    AddAttribute(xmlDoc, tenorNode, "value", ToMx3Tenor(tenor.Tenor));
                     ccyNode.AppendChild(tenorNode);
 
-                    var bidNode = xmlDoc.CreateElement("mp", "bid", xmlmp);
-                    bidNode.InnerText = tenor.AtmBid.ToString("0.000");
+                    var bidNode = xmlDoc.CreateElement("mp", "bid", Xmlmp);
+                    bidNode.InnerText = Format(tenor.AtmBid);
                     tenorNode.AppendChild(bidNode);
 
-                    var askNode = xmlDoc.CreateElement("mp", "ask", xmlmp);
-                    askNode.InnerText = tenor.AtmAsk.ToString("0.000");
+                    var askNode = xmlDoc.CreateElement("mp", "ask", Xmlmp);
+                    askNode.InnerText = Format(tenor.AtmAsk);
                     tenorNode.AppendChild(askNode);
                 }
             }
@@ -87,37 +70,13 @@ namespace FxVolatilityImport.Services
             xmlDoc.Save(AtmFilePath);
         }
 
-        public void ExportSmile(List<VolatilityTenor> data)
+        public void ExportSmile(IReadOnlyList<VolatilityTenor> data)
         {
+            const string xmlfx = "mx.MarketParameters.Rates";
+            const string xmlfxsm = "mx.MarketParameters.Rates.Smile";
+
             var xmlDoc = new XmlDocument();
-            string xmlns = "XmlCache";
-            string xmlmp = "mx.MarketParameters";
-            string xmlfx = "mx.MarketParameters.Rates";
-            string xmlfxsm = "mx.MarketParameters.Rates.Smile";
-
-            var headNode = xmlDoc.CreateElement("xc", "XmlCache", xmlns);
-            var headAttr = xmlDoc.CreateAttribute("xc", "action", xmlns);
-            headAttr.Value = "Update";
-            headNode.Attributes.Append(headAttr);
-            xmlDoc.AppendChild(headNode);
-
-            var areaNode = xmlDoc.CreateElement("xc", "XmlCacheArea", xmlns);
-            var areaAttr = xmlDoc.CreateAttribute("xc", "value", xmlns);
-            areaAttr.Value = "MarketParameters";
-            areaNode.Attributes.Append(areaAttr);
-            headNode.AppendChild(areaNode);
-
-            var nickNode = xmlDoc.CreateElement("mp", "nickName", xmlmp);
-            var nickAttr = xmlDoc.CreateAttribute("xc", "value", xmlns);
-            nickAttr.Value = "FO";
-            nickNode.Attributes.Append(nickAttr);
-            areaNode.AppendChild(nickNode);
-
-            var dateNode = xmlDoc.CreateElement("mp", "date", xmlmp);
-            var dateAttr = xmlDoc.CreateAttribute("xc", "value", xmlns);
-            dateAttr.Value = DateTime.Today.ToString("yyyyMMdd");
-            dateNode.Attributes.Append(dateAttr);
-            nickNode.AppendChild(dateNode);
+            var dateNode = CreateHeader(xmlDoc);
 
             var forexNode = xmlDoc.CreateElement("fx", "forex", xmlfx);
             dateNode.AppendChild(forexNode);
@@ -125,82 +84,82 @@ namespace FxVolatilityImport.Services
             var smileNode = xmlDoc.CreateElement("fxsm", "smile", xmlfxsm);
             forexNode.AppendChild(smileNode);
 
-            var pairs = data.Select(d => d.CurrencyPair).Distinct().ToList();
-
-            foreach (var pair in pairs)
+            foreach (var pair in data.Select(d => d.CurrencyPair).Distinct())
             {
                 var ccyNode = xmlDoc.CreateElement("fxsm", "pair", xmlfxsm);
-                var ccyAttr = xmlDoc.CreateAttribute("xc", "value", xmlns);
-                ccyAttr.Value = CurrencyPairMapper.ToMx3Format(pair);
-                ccyNode.Attributes.Append(ccyAttr);
+                AddAttribute(xmlDoc, ccyNode, "value", CurrencyPairMapper.ToMx3Format(pair));
                 smileNode.AppendChild(ccyNode);
 
-                var tenorData = data.Where(d => d.CurrencyPair == pair).ToList();
-
-                foreach (var tenor in tenorData)
+                foreach (var tenor in data.Where(d => d.CurrencyPair == pair))
                 {
                     var tenorNode = xmlDoc.CreateElement("fxsm", "maturity", xmlfxsm);
-                    var tenorAttr = xmlDoc.CreateAttribute("xc", "value", xmlns);
-                    tenorAttr.Value = tenor.Tenor == "ON" ? "O/N" : tenor.Tenor;
-                    tenorNode.Attributes.Append(tenorAttr);
+                    AddAttribute(xmlDoc, tenorNode, "value", ToMx3Tenor(tenor.Tenor));
                     ccyNode.AppendChild(tenorNode);
 
-                    // RR är redan justerad i BloombergService, använd direkt
-                    AddSmileOrdinate(xmlDoc, tenorNode, "10.000000000",
-                        tenor.RR10D.ToString("0.000"),
-                        tenor.BF10D.ToString("0.000"),
-                        xmlns, xmlmp, xmlfxsm);
-
-                    AddSmileOrdinate(xmlDoc, tenorNode, "25.000000000",
-                        tenor.RR25D.ToString("0.000"),
-                        tenor.BF25D.ToString("0.000"),
-                        xmlns, xmlmp, xmlfxsm);
+                    // RR är redan teckenjusterad för inverterade par i BloombergService
+                    AddSmileOrdinate(xmlDoc, tenorNode, "10.000000000", Format(tenor.RR10D), Format(tenor.BF10D), xmlfxsm);
+                    AddSmileOrdinate(xmlDoc, tenorNode, "25.000000000", Format(tenor.RR25D), Format(tenor.BF25D), xmlfxsm);
                 }
             }
 
             xmlDoc.Save(SmileFilePath);
         }
 
-        private void AddSmileOrdinate(XmlDocument doc, XmlNode parent, string deltaValue,
-            string rrValue, string bfValue, string xmlns, string xmlmp, string xmlfxsm)
+        /// <summary>Bygger XmlCache → XmlCacheArea → nickName → date och returnerar date-noden.</summary>
+        private static XmlElement CreateHeader(XmlDocument xmlDoc)
+        {
+            var headNode = xmlDoc.CreateElement("xc", "XmlCache", Xmlns);
+            AddAttribute(xmlDoc, headNode, "action", "Update");
+            xmlDoc.AppendChild(headNode);
+
+            var areaNode = xmlDoc.CreateElement("xc", "XmlCacheArea", Xmlns);
+            AddAttribute(xmlDoc, areaNode, "value", "MarketParameters");
+            headNode.AppendChild(areaNode);
+
+            var nickNode = xmlDoc.CreateElement("mp", "nickName", Xmlmp);
+            AddAttribute(xmlDoc, nickNode, "value", "FO");
+            areaNode.AppendChild(nickNode);
+
+            var dateNode = xmlDoc.CreateElement("mp", "date", Xmlmp);
+            AddAttribute(xmlDoc, dateNode, "value", DateTime.Today.ToString("yyyyMMdd", CultureInfo.InvariantCulture));
+            nickNode.AppendChild(dateNode);
+
+            return dateNode;
+        }
+
+        private static void AddSmileOrdinate(XmlDocument doc, XmlNode parent, string deltaValue,
+            string rrValue, string bfValue, string xmlfxsm)
         {
             var ordinateNode = doc.CreateElement("fxsm", "ordinate", xmlfxsm);
-
-            var valAttr = doc.CreateAttribute("xc", "value", xmlns);
-            valAttr.Value = deltaValue;
-            ordinateNode.Attributes.Append(valAttr);
-
-            var typeAttr = doc.CreateAttribute("xc", "type", xmlns);
-            typeAttr.Value = "Fields";
-            ordinateNode.Attributes.Append(typeAttr);
-
+            AddAttribute(doc, ordinateNode, "value", deltaValue);
+            AddAttribute(doc, ordinateNode, "type", "Fields");
             parent.AppendChild(ordinateNode);
 
-            AddSmileField(doc, ordinateNode, "fxrrAsk", rrValue, xmlns, xmlmp);
-            AddSmileField(doc, ordinateNode, "fxrrBid", rrValue, xmlns, xmlmp);
-            AddSmileField(doc, ordinateNode, "fxstrAsk", bfValue, xmlns, xmlmp);
-            AddSmileField(doc, ordinateNode, "fxstrBid", bfValue, xmlns, xmlmp);
+            AddSmileField(doc, ordinateNode, "fxrrAsk", rrValue);
+            AddSmileField(doc, ordinateNode, "fxrrBid", rrValue);
+            AddSmileField(doc, ordinateNode, "fxstrAsk", bfValue);
+            AddSmileField(doc, ordinateNode, "fxstrBid", bfValue);
         }
 
-        private void AddSmileField(XmlDocument doc, XmlNode parent, string fieldName,
-            string value, string xmlns, string xmlmp)
+        private static void AddSmileField(XmlDocument doc, XmlNode parent, string fieldName, string value)
         {
-            var node = doc.CreateElement("mp", fieldName, xmlmp);
+            var node = doc.CreateElement("mp", fieldName, Xmlmp);
             node.InnerText = value;
-
-            var formatAttr = doc.CreateAttribute("xc", "keyFormat", xmlns);
-            formatAttr.Value = "N";
-            node.Attributes.Append(formatAttr);
-
-            var userIdAttr = doc.CreateAttribute("xc", "userID", xmlns);
-            userIdAttr.Value = "13";
-            node.Attributes.Append(userIdAttr);
-
-            var typeAttr = doc.CreateAttribute("xc", "type", xmlns);
-            typeAttr.Value = "Field";
-            node.Attributes.Append(typeAttr);
-
+            AddAttribute(doc, node, "keyFormat", "N");
+            AddAttribute(doc, node, "userID", "13");
+            AddAttribute(doc, node, "type", "Field");
             parent.AppendChild(node);
         }
+
+        private static void AddAttribute(XmlDocument doc, XmlNode node, string name, string value)
+        {
+            var attr = doc.CreateAttribute("xc", name, Xmlns);
+            attr.Value = value;
+            node.Attributes!.Append(attr);
+        }
+
+        private static string ToMx3Tenor(string tenor) => tenor == "ON" ? "O/N" : tenor;
+
+        private static string Format(double value) => value.ToString("0.000", CultureInfo.InvariantCulture);
     }
 }

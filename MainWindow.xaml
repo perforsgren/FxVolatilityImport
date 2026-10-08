@@ -1,487 +1,62 @@
-<!-- MainWindow.xaml - Komplett snygg version -->
+<!-- MainWindow.xaml -->
 <Window x:Class="FxVolatilityImport.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:FxVolatilityImport.ViewModels"
-        Title="FX Volatility Import" 
-        Height="750" Width="1100"
-        Background="{x:Null}"
+        xmlns:conv="clr-namespace:FxVolatilityImport.Converters"
+        xmlns:controls="clr-namespace:FxVolatilityImport.Controls"
+        mc:Ignorable="d"
+        d:DataContext="{d:DesignInstance Type=vm:MainViewModel, IsDesignTimeCreatable=False}"
+        Title="FX Volatility Import"
+        Width="1380" Height="880"
+        MinWidth="1200" MinHeight="720"
         WindowStartupLocation="CenterScreen"
-        ResizeMode="CanMinimize"
-        FontFamily="Segoe UI"
+        Background="{StaticResource Brush.Bg}"
+        Foreground="{StaticResource Brush.Text}"
+        FontFamily="{StaticResource Font.Ui}"
+        FontSize="12.5"
+        UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Display"
         Icon="{Binding AppIcon, Source={x:Static Application.Current}}">
 
     <WindowChrome.WindowChrome>
-        <WindowChrome CaptionHeight="32" 
-                      ResizeBorderThickness="5"
+        <WindowChrome CaptionHeight="52"
+                      ResizeBorderThickness="6"
                       GlassFrameThickness="0"
-                      CornerRadius="0"/>
+                      CornerRadius="0"
+                      UseAeroCaptionButtons="False"/>
     </WindowChrome.WindowChrome>
 
-        <!--
-    <Window.DataContext>
-        <vm:MainViewModel/>
-    </Window.DataContext>
-    -->
-
     <Window.Resources>
-        <!-- Färgpalett -->
-        <Color x:Key="Color.Background">#0F172A</Color>
-        <Color x:Key="Color.Panel">#1E293B</Color>
-        <Color x:Key="Color.PanelHover">#334155</Color>
-        <Color x:Key="Color.Border">#334155</Color>
-        <Color x:Key="Color.BorderSoft">#1E3A5F</Color>
-        <Color x:Key="Color.Text">#F1F5F9</Color>
-        <Color x:Key="Color.TextMuted">#94A3B8</Color>
-        <Color x:Key="Color.Accent">#38BDF8</Color>
-        <Color x:Key="Color.Success">#4ADE80</Color>
-        <Color x:Key="Color.Warning">#FBBF24</Color>
-        <Color x:Key="Color.Error">#F87171</Color>
+        <conv:LevelToBrushConverter x:Key="LevelBrush"/>
+        <conv:NumberConverter x:Key="Num"/>
+        <conv:ChangeToBrushConverter x:Key="ChangeBrush"/>
+        <conv:BoolToVisibilityConverter x:Key="BoolToVis"/>
+        <conv:EmptyToCollapsedConverter x:Key="EmptyToCollapsed"/>
 
-        <SolidColorBrush x:Key="Brush.Background" Color="{StaticResource Color.Background}"/>
-        <SolidColorBrush x:Key="Brush.Panel" Color="{StaticResource Color.Panel}"/>
-        <SolidColorBrush x:Key="Brush.Border" Color="{StaticResource Color.Border}"/>
-        <SolidColorBrush x:Key="Brush.BorderSoft" Color="{StaticResource Color.BorderSoft}"/>
-        <SolidColorBrush x:Key="Brush.Text" Color="{StaticResource Color.Text}"/>
-        <SolidColorBrush x:Key="Brush.TextMuted" Color="{StaticResource Color.TextMuted}"/>
-        <SolidColorBrush x:Key="Brush.Accent" Color="{StaticResource Color.Accent}"/>
-        <SolidColorBrush x:Key="Brush.Success" Color="{StaticResource Color.Success}"/>
-        <SolidColorBrush x:Key="Brush.Warning" Color="{StaticResource Color.Warning}"/>
-        <SolidColorBrush x:Key="Brush.Error" Color="{StaticResource Color.Error}"/>
-
-        <!-- Converters -->
-        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
-
-        <!-- Dark ScrollBar Style -->
-        <Style x:Key="ScrollBarThumb" TargetType="Thumb">
-            <Setter Property="OverridesDefaultStyle" Value="True"/>
-            <Setter Property="IsTabStop" Value="False"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Thumb">
-                        <Border x:Name="thumbBorder" 
-                                Background="#40FFFFFF" 
-                                CornerRadius="4"/>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="thumbBorder" Property="Background" Value="#60FFFFFF"/>
-                            </Trigger>
-                            <Trigger Property="IsDragging" Value="True">
-                                <Setter TargetName="thumbBorder" Property="Background" Value="#80FFFFFF"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <Style x:Key="DarkScrollBar" TargetType="ScrollBar">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Width" Value="10"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ScrollBar">
-                        <Grid>
-                            <Border Background="#10FFFFFF" CornerRadius="4" Margin="2"/>
-                            <Track x:Name="PART_Track" IsDirectionReversed="True">
-                                <Track.Thumb>
-                                    <Thumb Style="{StaticResource ScrollBarThumb}" Margin="2"/>
-                                </Track.Thumb>
-                            </Track>
-                        </Grid>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-            <Style.Triggers>
-                <Trigger Property="Orientation" Value="Horizontal">
-                    <Setter Property="Width" Value="Auto"/>
-                    <Setter Property="Height" Value="10"/>
-                    <Setter Property="Template">
-                        <Setter.Value>
-                            <ControlTemplate TargetType="ScrollBar">
-                                <Grid>
-                                    <Border Background="#10FFFFFF" CornerRadius="4" Margin="2"/>
-                                    <Track x:Name="PART_Track" IsDirectionReversed="False">
-                                        <Track.Thumb>
-                                            <Thumb Style="{StaticResource ScrollBarThumb}" Margin="2"/>
-                                        </Track.Thumb>
-                                    </Track>
-                                </Grid>
-                            </ControlTemplate>
-                        </Setter.Value>
-                    </Setter>
-                </Trigger>
-            </Style.Triggers>
-        </Style>
-
-        <Style x:Key="DarkScrollViewer" TargetType="ScrollViewer">
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ScrollViewer">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions>
-                                <RowDefinition/>
-                                <RowDefinition Height="Auto"/>
-                            </Grid.RowDefinitions>
-                            <ScrollContentPresenter Grid.Column="0" Grid.Row="0"/>
-                            <ScrollBar x:Name="PART_VerticalScrollBar"
-                                       Grid.Column="1" Grid.Row="0"
-                                       Style="{StaticResource DarkScrollBar}"
-                                       Value="{TemplateBinding VerticalOffset}"
-                                       Maximum="{TemplateBinding ScrollableHeight}"
-                                       ViewportSize="{TemplateBinding ViewportHeight}"
-                                       Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}"/>
-                            <ScrollBar x:Name="PART_HorizontalScrollBar"
-                                       Grid.Column="0" Grid.Row="1"
-                                       Style="{StaticResource DarkScrollBar}"
-                                       Orientation="Horizontal"
-                                       Value="{TemplateBinding HorizontalOffset}"
-                                       Maximum="{TemplateBinding ScrollableWidth}"
-                                       ViewportSize="{TemplateBinding ViewportWidth}"
-                                       Visibility="{TemplateBinding ComputedHorizontalScrollBarVisibility}"/>
-                        </Grid>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- Window Chrome Button Style -->
-        <Style x:Key="WindowChromeButton" TargetType="Button">
-            <Setter Property="Width" Value="46"/>
-            <Setter Property="Height" Value="32"/>
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Foreground" Value="{StaticResource Brush.TextMuted}"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="WindowChrome.IsHitTestVisibleInChrome" Value="True"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" Background="{TemplateBinding Background}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#20FFFFFF"/>
-                                <Setter Property="Foreground" Value="{StaticResource Brush.Text}"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#30FFFFFF"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Foreground" Value="#40FFFFFF"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- Close Button Style -->
-        <Style x:Key="WindowCloseButton" TargetType="Button" BasedOn="{StaticResource WindowChromeButton}">
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" Background="{TemplateBinding Background}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#E81123"/>
-                                <Setter Property="Foreground" Value="White"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#F1707A"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- Panel Style -->
-        <Style x:Key="PanelStyle" TargetType="Border">
-            <Setter Property="Background" Value="{StaticResource Brush.Panel}"/>
-            <Setter Property="CornerRadius" Value="12"/>
-            <Setter Property="BorderBrush" Value="{StaticResource Brush.BorderSoft}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-        </Style>
-
-        <!-- Accent Button -->
-        <Style x:Key="AccentButton" TargetType="Button">
-            <Setter Property="Background" Value="{StaticResource Brush.Accent}"/>
-            <Setter Property="Foreground" Value="#0F172A"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Padding" Value="16,10"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" 
-                                Background="{TemplateBinding Background}" 
-                                CornerRadius="8" 
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#60A5FA"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#2563EB"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="Bd" Property="Opacity" Value="0.5"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- Secondary Button -->
-        <Style x:Key="SecondaryButton" TargetType="Button">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Foreground" Value="{StaticResource Brush.TextMuted}"/>
-            <Setter Property="FontWeight" Value="Medium"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Padding" Value="12,8"/>
-            <Setter Property="BorderBrush" Value="{StaticResource Brush.Border}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" 
-                                Background="{TemplateBinding Background}" 
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="6" 
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#10FFFFFF"/>
-                                <Setter Property="Foreground" Value="{StaticResource Brush.Text}"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- Success Button -->
-        <Style x:Key="SuccessButton" TargetType="Button">
-            <Setter Property="Background" Value="#1A4ADE80"/>
-            <Setter Property="Foreground" Value="{StaticResource Brush.Success}"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Padding" Value="16,10"/>
-            <Setter Property="BorderBrush" Value="{StaticResource Brush.Success}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" 
-                                Background="{TemplateBinding Background}" 
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="8" 
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#304ADE80"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="Bd" Property="Opacity" Value="0.5"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- DataGrid Styles -->
-        <Style x:Key="DarkDataGrid" TargetType="DataGrid">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Foreground" Value="{StaticResource Brush.Text}"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="GridLinesVisibility" Value="Horizontal"/>
-            <Setter Property="HorizontalGridLinesBrush" Value="{StaticResource Brush.BorderSoft}"/>
-            <Setter Property="RowBackground" Value="Transparent"/>
-            <Setter Property="AlternatingRowBackground" Value="#08FFFFFF"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="RowHeight" Value="36"/>
-            <Setter Property="ColumnHeaderHeight" Value="40"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="DataGrid">
-                        <Border Background="{TemplateBinding Background}" 
-                                BorderBrush="{TemplateBinding BorderBrush}" 
-                                BorderThickness="{TemplateBinding BorderThickness}">
-                            <ScrollViewer x:Name="DG_ScrollViewer" Focusable="False" Style="{StaticResource DarkScrollViewer}">
-                                <ScrollViewer.Template>
-                                    <ControlTemplate TargetType="ScrollViewer">
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="Auto"/>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
-                                            <Grid.RowDefinitions>
-                                                <RowDefinition Height="Auto"/>
-                                                <RowDefinition Height="*"/>
-                                                <RowDefinition Height="Auto"/>
-                                            </Grid.RowDefinitions>
-                                            <DataGridColumnHeadersPresenter x:Name="PART_ColumnHeadersPresenter" 
-                                                                            Grid.Column="1" 
-                                                                            Visibility="{Binding HeadersVisibility, ConverterParameter={x:Static DataGridHeadersVisibility.Column}, Converter={x:Static DataGrid.HeadersVisibilityConverter}, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"/>
-                                            <ScrollContentPresenter x:Name="PART_ScrollContentPresenter" 
-                                                                    Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="1" 
-                                                                    CanContentScroll="{TemplateBinding CanContentScroll}"/>
-                                            <ScrollBar x:Name="PART_VerticalScrollBar" 
-                                                       Grid.Column="2" Grid.Row="1" 
-                                                       Style="{StaticResource DarkScrollBar}"
-                                                       Maximum="{TemplateBinding ScrollableHeight}" 
-                                                       ViewportSize="{TemplateBinding ViewportHeight}" 
-                                                       Value="{Binding VerticalOffset, Mode=OneWay, RelativeSource={RelativeSource TemplatedParent}}" 
-                                                       Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}"/>
-                                            <ScrollBar x:Name="PART_HorizontalScrollBar" 
-                                                       Grid.Column="1" Grid.Row="2" 
-                                                       Style="{StaticResource DarkScrollBar}"
-                                                       Orientation="Horizontal" 
-                                                       Maximum="{TemplateBinding ScrollableWidth}" 
-                                                       ViewportSize="{TemplateBinding ViewportWidth}" 
-                                                       Value="{Binding HorizontalOffset, Mode=OneWay, RelativeSource={RelativeSource TemplatedParent}}" 
-                                                       Visibility="{TemplateBinding ComputedHorizontalScrollBarVisibility}"/>
-                                        </Grid>
-                                    </ControlTemplate>
-                                </ScrollViewer.Template>
-                                <ItemsPresenter SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
-                            </ScrollViewer>
-                        </Border>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <Style TargetType="DataGridColumnHeader">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Foreground" Value="{StaticResource Brush.TextMuted}"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="FontSize" Value="11"/>
-            <Setter Property="Padding" Value="8,0"/>
-            <Setter Property="BorderBrush" Value="{StaticResource Brush.BorderSoft}"/>
-            <Setter Property="BorderThickness" Value="0,0,0,1"/>
-        </Style>
-
-        <Style TargetType="DataGridCell">
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="8,0"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="DataGridCell">
-                        <Border Background="{TemplateBinding Background}" 
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter VerticalAlignment="Center"/>
-                        </Border>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-            <Style.Triggers>
-                <Trigger Property="IsSelected" Value="True">
-                    <Setter Property="Background" Value="#2038BDF8"/>
-                    <Setter Property="Foreground" Value="{StaticResource Brush.Text}"/>
-                </Trigger>
-            </Style.Triggers>
-        </Style>
-
-        <!-- Status Pill -->
-        <Style x:Key="StatusPill" TargetType="Border">
-            <Setter Property="CornerRadius" Value="12"/>
-            <Setter Property="Padding" Value="12,6"/>
-        </Style>
-
-        <!-- Checkbox Style -->
-        <Style TargetType="CheckBox">
-            <Setter Property="Foreground" Value="{StaticResource Brush.Text}"/>
-            <Setter Property="VerticalContentAlignment" Value="Center"/>
-        </Style>
-
-        <!-- ComboBox Dark Style -->
-        <Style TargetType="ComboBox">
-            <Setter Property="Background" Value="{StaticResource Brush.Panel}"/>
-            <Setter Property="Foreground" Value="{StaticResource Brush.Text}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource Brush.Border}"/>
-        </Style>
+        <!-- Kolumnbredder för ytan (delas av rubrikrad och rader) -->
+        <GridLength x:Key="Col.Tenor">48</GridLength>
+        <GridLength x:Key="Col.Gap">18</GridLength>
     </Window.Resources>
 
-    <Border Background="{StaticResource Brush.Background}" BorderBrush="{StaticResource Brush.BorderSoft}" BorderThickness="1">
+    <Border x:Name="RootBorder" BorderBrush="{StaticResource Brush.Border}" BorderThickness="1">
         <Grid>
             <Grid.RowDefinitions>
-                <RowDefinition Height="32"/>
+                <RowDefinition Height="52"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <!-- CUSTOM TITLE BAR -->
-            <Grid Grid.Row="0" Background="#1E293B">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-
-                <!-- Icon and Title -->
-                <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="12,0,0,0" VerticalAlignment="Center">
-                    <Image Source="{Binding AppIcon, Source={x:Static Application.Current}}"
-                           Width="20" Height="20"
-                           Margin="0,0,10,0"
-                           VerticalAlignment="Center"
-                           RenderOptions.BitmapScalingMode="HighQuality"/>
-
-                    <TextBlock Text="Volatility Manager"
-                               Foreground="{StaticResource Brush.Text}"
-                               FontSize="12"
-                               FontWeight="Medium"
-                               VerticalAlignment="Center"/>
-                </StackPanel>
-
-                <!-- Window Buttons -->
-                <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <Button Style="{StaticResource WindowChromeButton}" Click="WidgetButton_Click" ToolTip="Show Widget">
-                        <TextBlock Text="📌" FontSize="12"/>
-                    </Button>
-                    <!-- Minimize -->
-                    <Button Style="{StaticResource WindowChromeButton}" Click="MinimizeButton_Click">
-                        <Path Data="M0,5 H10" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1"/>
-                    </Button>
-                    <!-- Maximize (Disabled) -->
-                    <Button Style="{StaticResource WindowChromeButton}" IsEnabled="False">
-                        <Path Data="M0,0 H10 V10 H0 Z" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1" Fill="Transparent"/>
-                    </Button>
-                    <!-- Close -->
-                    <Button Style="{StaticResource WindowCloseButton}" Click="CloseButton_Click">
-                        <Path Data="M0,0 L10,10 M10,0 L0,10" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1"/>
-                    </Button>
-                </StackPanel>
-            </Grid>
-
-            <!-- HEADER -->
-            <Border Grid.Row="1" 
-                    Background="{StaticResource Brush.Panel}"
-                    BorderBrush="{StaticResource Brush.BorderSoft}"
-                    BorderThickness="0,0,0,1"
-                    Padding="16,12">
+            <!-- ======================================================
+                 TITELRAD
+                 ====================================================== -->
+            <Border Grid.Row="0"
+                    Background="{StaticResource Brush.Surface}"
+                    BorderBrush="{StaticResource Brush.Border}"
+                    BorderThickness="0,0,0,1">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
@@ -489,343 +64,686 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <!-- Title -->
-                    <StackPanel>
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="📊" FontSize="22" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                            <TextBlock Text="FX Volatility Import" 
-                   FontSize="18" FontWeight="Bold" 
-                   Foreground="{StaticResource Brush.Text}"
-                   VerticalAlignment="Center"/>
+                    <StackPanel Orientation="Horizontal" Margin="16,0,0,0" VerticalAlignment="Center">
+                        <Border Width="30" Height="30" CornerRadius="8" Background="{StaticResource Brush.AccentGradient}">
+                            <Path Width="16" Height="11" Stretch="Fill"
+                                  Data="M0,11 L5,4 L9,7 L16,0"
+                                  Stroke="White" StrokeThickness="2"
+                                  StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                        </Border>
+                        <StackPanel Margin="11,0,0,0" VerticalAlignment="Center">
+                            <TextBlock Text="FX Volatility Import" FontSize="14" FontWeight="SemiBold"/>
+                            <TextBlock Text="Bloomberg → MX3 intraday market data" FontSize="11" Style="{StaticResource Text.Faint}"/>
                         </StackPanel>
-                        <TextBlock Text="Bloomberg → MX3 Market Data" 
-               FontSize="11" 
-               Foreground="{StaticResource Brush.TextMuted}"
-               Margin="38,2,0,0"/>
                     </StackPanel>
 
-                    <!-- Connection Status -->
-                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                        
-                        <!-- Bloomberg Status Pill -->
-                        <Border Margin="0,0,16,0" CornerRadius="12" Padding="12,6" BorderThickness="1">
-                            <Border.Style>
-                                <Style TargetType="Border">
-                                    <Setter Property="Background" Value="#1AF87171"/>
-                                    <Setter Property="BorderBrush" Value="#F87171"/>
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsConnected}" Value="True">
-                                            <Setter Property="Background" Value="#1A4ADE80"/>
-                                            <Setter Property="BorderBrush" Value="#4ADE80"/>
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Border.Style>
+                    <!-- Statuschips -->
+                    <StackPanel Grid.Column="1"
+                                Orientation="Horizontal"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Center"
+                                Margin="0,0,14,0"
+                                WindowChrome.IsHitTestVisibleInChrome="True">
+
+                        <Border Style="{StaticResource Chip}"
+                                Background="{Binding BloombergLevel, Converter={StaticResource LevelBrush}, ConverterParameter=Bg}"
+                                BorderBrush="{Binding BloombergLevel, Converter={StaticResource LevelBrush}, ConverterParameter=Border}"
+                                ToolTip="{Binding BloombergDetail}">
                             <StackPanel Orientation="Horizontal">
-                                <Ellipse Width="8" Height="8" Margin="0,0,8,0" VerticalAlignment="Center">
-                                    <Ellipse.Style>
-                                        <Style TargetType="Ellipse">
-                                            <Setter Property="Fill" Value="#F87171"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IsConnected}" Value="True">
-                                                    <Setter Property="Fill" Value="#4ADE80"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Ellipse.Style>
-                                </Ellipse>
-                                <TextBlock VerticalAlignment="Center" FontWeight="Medium" FontSize="12">
+                                <Ellipse Width="7" Height="7" VerticalAlignment="Center"
+                                         Fill="{Binding BloombergLevel, Converter={StaticResource LevelBrush}}"/>
+                                <TextBlock Margin="7,0,0,0" FontSize="11.5" FontWeight="SemiBold" VerticalAlignment="Center"
+                                           Text="{Binding BloombergText}"
+                                           Foreground="{Binding BloombergLevel, Converter={StaticResource LevelBrush}}"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource Chip}" Margin="8,0,0,0"
+                                Background="{Binding SchedulerLevel, Converter={StaticResource LevelBrush}, ConverterParameter=Bg}"
+                                BorderBrush="{Binding SchedulerLevel, Converter={StaticResource LevelBrush}, ConverterParameter=Border}">
+                            <Border.ToolTip>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding SchedulerDetail}"/>
+                                    <TextBlock Margin="0,6,0,0" Text="{Binding LastScheduledText}" Foreground="{StaticResource Brush.TextMuted}"/>
+                                </StackPanel>
+                            </Border.ToolTip>
+                            <StackPanel Orientation="Horizontal">
+                                <Path Width="11" Height="11" Stretch="Uniform" VerticalAlignment="Center"
+                                      Data="M5.5,0 A5.5,5.5 0 1 1 5.49,0 Z M5.5,2.5 L5.5,5.5 L7.5,7"
+                                      Stroke="{Binding SchedulerLevel, Converter={StaticResource LevelBrush}}"
+                                      StrokeThickness="1.3" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                                <TextBlock Margin="7,0,0,0" FontSize="11.5" FontWeight="SemiBold" VerticalAlignment="Center"
+                                           Text="{Binding SchedulerText}"
+                                           Foreground="{Binding SchedulerLevel, Converter={StaticResource LevelBrush}}"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- Fönsterknappar -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal">
+                        <Button Style="{StaticResource Btn.Chrome}" Click="WidgetButton_Click" ToolTip="Switch to compact widget">
+                            <Path Data="M0.5,0.5 H11.5 V8.5 H0.5 Z M3,11 H9" StrokeThickness="1.1"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                        </Button>
+                        <Button Style="{StaticResource Btn.Chrome}" Click="MinimizeButton_Click" ToolTip="Minimize">
+                            <Path Data="M0,0.5 H10" StrokeThickness="1.1"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                        </Button>
+                        <Button Style="{StaticResource Btn.Chrome}" Click="MaximizeButton_Click" ToolTip="Maximize">
+                            <Path x:Name="MaxIcon" Data="M0.5,0.5 H9.5 V9.5 H0.5 Z" StrokeThickness="1.1"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                        </Button>
+                        <Button Style="{StaticResource Btn.ChromeClose}" Click="CloseButton_Click" ToolTip="Exit">
+                            <Path Data="M0,0 L10,10 M10,0 L0,10" StrokeThickness="1.1"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- ======================================================
+                 BANNER: Bloomberg nere
+                 ====================================================== -->
+            <Border Grid.Row="1"
+                    Visibility="{Binding ShowBloombergBanner, Converter={StaticResource BoolToVis}}"
+                    Background="{StaticResource Level.Error.Bg}"
+                    BorderBrush="{StaticResource Level.Error.Border}"
+                    BorderThickness="0,0,0,1"
+                    Padding="18,8">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid Width="16" Height="14" VerticalAlignment="Center">
+                        <Path Data="M8,0 L16,14 L0,14 Z" Fill="{StaticResource Level.Error.Fg}"/>
+                        <TextBlock Text="!" FontSize="10" FontWeight="Bold" Foreground="{StaticResource Brush.Bg}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,0"/>
+                    </Grid>
+                    <TextBlock Grid.Column="1" Margin="10,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis">
+                        <Run Text="Bloomberg is not connected" FontWeight="SemiBold" Foreground="{StaticResource Level.Error.Fg}"/>
+                        <Run Text=" – reconnecting automatically. "/>
+                        <Run Text="{Binding BloombergDetail, Mode=OneWay}" Foreground="{StaticResource Brush.TextMuted}"/>
+                    </TextBlock>
+                    <Button Grid.Column="2" Style="{StaticResource Btn.Secondary}" Padding="12,5"
+                            Content="Reconnect now" Command="{Binding ReconnectCommand}"/>
+                </Grid>
+            </Border>
+
+            <!-- ======================================================
+                 INNEHÅLL
+                 ====================================================== -->
+            <Grid Grid.Row="2" Margin="16,16,16,14">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="350"/>
+                    <ColumnDefinition Width="16"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- ============ VÄNSTER: valutapar ============ -->
+                <Border Style="{StaticResource Card}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <Grid Margin="18,16,14,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Currency pairs" Style="{StaticResource Text.Section}"/>
+                                    <Border Style="{StaticResource Tag}" Margin="8,0,0,0" VerticalAlignment="Center" Padding="7,0">
+                                        <TextBlock Text="{Binding CurrencyPairs.Count}" FontWeight="SemiBold"/>
+                                    </Border>
+                                </StackPanel>
+                                <TextBlock Margin="0,3,0,0" FontSize="11.5" TextTrimming="CharacterEllipsis" Text="{Binding PositionsText}">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock">
-                                            <Setter Property="Text" Value="Disconnected"/>
-                                            <Setter Property="Foreground" Value="#F87171"/>
+                                            <Setter Property="Foreground" Value="{StaticResource Brush.TextFaint}"/>
                                             <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IsConnected}" Value="True">
-                                                    <Setter Property="Text" Value="Bloomberg Connected"/>
-                                                    <Setter Property="Foreground" Value="#4ADE80"/>
+                                                <DataTrigger Binding="{Binding PositionsStale}" Value="True">
+                                                    <Setter Property="Foreground" Value="{StaticResource Level.Warning.Fg}"/>
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
                                     </TextBlock.Style>
                                 </TextBlock>
                             </StackPanel>
-                        </Border>
-
-
-                        <Button Content="Connect" 
-                                Command="{Binding ConnectCommand}"
-                                Style="{StaticResource SecondaryButton}"
-                                Visibility="{Binding IsConnected, Converter={StaticResource BoolToVis}, ConverterParameter=Inverse}"/>
-                    </StackPanel>
-                </Grid>
-            </Border>
-
-            <!-- MAIN CONTENT -->
-            <Grid Grid.Row="2" Margin="12,12">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="340"/>
-                    <ColumnDefinition Width="12"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-
-                <!-- LEFT: Currency Pairs -->
-                <Border Grid.Column="0" Style="{StaticResource PanelStyle}" Padding="16">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*"/>
-                        </Grid.RowDefinitions>
-
-                        <!-- Panel Header -->
-                        <Grid Margin="0,0,0,12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel>
-                                <TextBlock Text="Currency Pairs" 
-                                           FontSize="16" FontWeight="SemiBold"
-                                           Foreground="{StaticResource Brush.Text}"/>
-                                <TextBlock Text="From live options positions"
-                                           FontSize="11"
-                                           Foreground="{StaticResource Brush.TextMuted}"
-                                           Margin="0,4,0,0"/>
-                            </StackPanel>
-                            <Button Grid.Column="1" 
-                                    Content="↻ Refresh"
+                            <Button Grid.Column="1" Style="{StaticResource Btn.Icon}" VerticalAlignment="Top"
                                     Command="{Binding RefreshPairsCommand}"
-                                    Style="{StaticResource SecondaryButton}"/>
+                                    ToolTip="Re-read the live positions file now (it is also checked automatically every 30 s)">
+                                <Path Data="M11,3 A5.5,5.5 0 1 0 12.5,8 M11.5,0.5 L11.5,3.5 L8.5,3.5"
+                                      StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                            </Button>
                         </Grid>
 
-                        <!-- Info text -->
-                        <Border Grid.Row="1" 
-                                Background="#10FBBF24"
-                                BorderBrush="#40FBBF24"
-                                BorderThickness="1"
-                                CornerRadius="6"
-                                Padding="12"
-                                Margin="0,0,0,12">
-                            <TextBlock Text="💡 Configure Bloomberg sources per currency pair. Changes are saved automatically."
-                                       FontSize="11"
-                                       Foreground="{StaticResource Brush.Warning}"
-                                       TextWrapping="Wrap"/>
+                        <!-- Kolumnrubriker -->
+                        <Grid Grid.Row="1" Margin="26,0,22,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="44"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="72"/>
+                                <ColumnDefinition Width="6"/>
+                                <ColumnDefinition Width="72"/>
+                                <ColumnDefinition Width="20"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="ON" Style="{StaticResource Text.Label}"
+                                       ToolTip="Include the pair in load and import (shared with all users)"/>
+                            <TextBlock Grid.Column="1" Text="PAIR" Style="{StaticResource Text.Label}"/>
+                            <TextBlock Grid.Column="2" Text="ATM" Style="{StaticResource Text.Label}" Margin="2,0,0,0"/>
+                            <TextBlock Grid.Column="4" Text="SMILE" Style="{StaticResource Text.Label}" Margin="2,0,0,0"/>
+                        </Grid>
+
+                        <ListBox Grid.Row="2"
+                                 Style="{StaticResource PlainListBox}"
+                                 ItemContainerStyle="{StaticResource PairListItem}"
+                                 ItemsSource="{Binding CurrencyPairs}"
+                                 SelectedItem="{Binding SelectedPair}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:CurrencyPairViewModel}">
+                                    <Grid Height="48" Margin="10,0,10,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="44"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="72"/>
+                                            <ColumnDefinition Width="6"/>
+                                            <ColumnDefinition Width="72"/>
+                                            <ColumnDefinition Width="20"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <CheckBox Style="{StaticResource ToggleSwitch}"
+                                                  IsChecked="{Binding IsLive}"
+                                                  ToolTip="Include in load and import (shared with all users)"/>
+
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding DisplayName}" FontSize="13" FontWeight="SemiBold"/>
+                                                <Border Style="{StaticResource Tag}" Margin="6,0,0,0" Padding="4,0" VerticalAlignment="Center"
+                                                        Visibility="{Binding IsInverted, Converter={StaticResource BoolToVis}}"
+                                                        ToolTip="Bloomberg only quotes the inverse pair. ATM and BF are used as is, RR changes sign before import.">
+                                                    <TextBlock Text="INV" FontSize="9.5" FontWeight="SemiBold"/>
+                                                </Border>
+                                            </StackPanel>
+                                            <TextBlock Text="{Binding StatusShortText}" FontSize="10.5" Margin="0,1,0,0"
+                                                       Foreground="{Binding StatusLevel, Converter={StaticResource LevelBrush}}"/>
+                                        </StackPanel>
+
+                                        <ComboBox Grid.Column="2"
+                                                  ItemsSource="{Binding DataContext.AvailableSources, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                                  SelectedItem="{Binding AtmSource}"
+                                                  ToolTip="Bloomberg source for ATM (shared with all users)"/>
+
+                                        <ComboBox Grid.Column="4"
+                                                  ItemsSource="{Binding DataContext.AvailableSources, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                                  SelectedItem="{Binding SmileSource}"
+                                                  ToolTip="Bloomberg source for RR/BF (shared with all users)"/>
+
+                                        <Ellipse Grid.Column="5" Width="8" Height="8" HorizontalAlignment="Right"
+                                                 Fill="{Binding StatusLevel, Converter={StaticResource LevelBrush}}"
+                                                 ToolTip="{Binding StatusTooltip}"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+
+                        <Border Grid.Row="3" BorderBrush="{StaticResource Brush.Border}" BorderThickness="0,1,0,0" Padding="18,10">
+                            <TextBlock Style="{StaticResource Text.Faint}" FontSize="11" TextWrapping="Wrap"
+                                       Text="Sources and ON/OFF are shared with all users and remembered even when a pair has no positions for a while."/>
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <!-- ============ HÖGER ============ -->
+                <Grid Grid.Column="2">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="14"/>
+                        <RowDefinition Height="*" MinHeight="330"/>
+                        <RowDefinition Height="14"/>
+                        <RowDefinition Height="170"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- KPI-rad -->
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="12"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="12"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="12"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Marknadsdata -->
+                        <Border Grid.Column="0" Style="{StaticResource Card}" Padding="16,12">
+                            <Grid>
+                                <StackPanel>
+                                    <TextBlock Text="MARKET DATA" Style="{StaticResource Text.Label}"/>
+                                    <TextBlock Margin="0,6,0,0" Style="{StaticResource Text.Kpi}" Text="{Binding LastLoadText}"/>
+                                    <TextBlock Margin="0,2,0,0" FontSize="11.5" Style="{StaticResource Text.Faint}"
+                                               TextTrimming="CharacterEllipsis" Text="{Binding LastLoadDetail}"/>
+                                </StackPanel>
+                                <Control Style="{StaticResource Spinner}" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                         Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}"/>
+                            </Grid>
                         </Border>
 
-                        <!-- DataGrid -->
-                        <DataGrid Grid.Row="2"
-                                  ItemsSource="{Binding CurrencyPairs}"
-                                  Style="{StaticResource DarkDataGrid}"
-                                  AutoGenerateColumns="False"
-                                  CanUserAddRows="False"
-                                  HeadersVisibility="Column"
-                                  SelectionMode="Single">
-                            <DataGrid.Columns>
-                                <DataGridCheckBoxColumn Header="LIVE" 
-                                                        Binding="{Binding IsLive, UpdateSourceTrigger=PropertyChanged}" 
-                                                        Width="50"/>
-                                <DataGridTextColumn Header="PAIR" 
-                                                    Binding="{Binding CurrencyPair}" 
-                                                    IsReadOnly="True" 
-                                                    Width="70"/>
-                                <DataGridComboBoxColumn Header="ATM" Width="75">
-                                    <DataGridComboBoxColumn.ElementStyle>
-                                        <Style TargetType="ComboBox">
-                                            <Setter Property="IsReadOnly" Value="True"/>
-                                            <Setter Property="IsHitTestVisible" Value="False"/>
-                                        </Style>
-                                    </DataGridComboBoxColumn.ElementStyle>
-                                    <DataGridComboBoxColumn.ItemsSource>
-                                        <x:Array Type="sys:String" xmlns:sys="clr-namespace:System;assembly=mscorlib">
-                                            <sys:String>BGN</sys:String>
-                                            <sys:String>BLCS</sys:String>
-                                            <sys:String>BVAL</sys:String>
-                                        </x:Array>
-                                    </DataGridComboBoxColumn.ItemsSource>
-                                    <DataGridComboBoxColumn.SelectedItemBinding>
-                                        <Binding Path="AtmSource" UpdateSourceTrigger="PropertyChanged"/>
-                                    </DataGridComboBoxColumn.SelectedItemBinding>
-                                </DataGridComboBoxColumn>
-                                <DataGridComboBoxColumn Header="SMILE" Width="75">
-                                    <DataGridComboBoxColumn.ElementStyle>
-                                        <Style TargetType="ComboBox">
-                                            <Setter Property="IsReadOnly" Value="True"/>
-                                            <Setter Property="IsHitTestVisible" Value="False"/>
-                                        </Style>
-                                    </DataGridComboBoxColumn.ElementStyle>
-                                    <DataGridComboBoxColumn.ItemsSource>
-                                        <x:Array Type="sys:String" xmlns:sys="clr-namespace:System;assembly=mscorlib">
-                                            <sys:String>BGN</sys:String>
-                                            <sys:String>BLCS</sys:String>
-                                            <sys:String>BVAL</sys:String>
-                                        </x:Array>
-                                    </DataGridComboBoxColumn.ItemsSource>
-                                    <DataGridComboBoxColumn.SelectedItemBinding>
-                                        <Binding Path="SmileSource" UpdateSourceTrigger="PropertyChanged"/>
-                                    </DataGridComboBoxColumn.SelectedItemBinding>
-                                </DataGridComboBoxColumn>
-                            </DataGrid.Columns>
-                        </DataGrid>
-                    </Grid>
-                </Border>
-
-                <!-- RIGHT: Volatility Data -->
-                <Border Grid.Column="2" Style="{StaticResource PanelStyle}" Padding="16">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*"/>
-                        </Grid.RowDefinitions>
-
-                        <!-- Panel Header -->
-                        <Grid Margin="0,0,0,12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
+                        <!-- Validering -->
+                        <Border Grid.Column="2" Style="{StaticResource Card}" Padding="16,12">
                             <StackPanel>
-                                <TextBlock Text="Volatility Surface" 
-                                           FontSize="16" FontWeight="SemiBold"
-                                           Foreground="{StaticResource Brush.Text}"/>
-                                <TextBlock FontSize="11" Foreground="{StaticResource Brush.TextMuted}" Margin="0,4,0,0">
-                                    <Run Text="Loaded"/>
-                                    <Run Text="{Binding VolatilityData.Count, Mode=OneWay}"/>
-                                    <Run Text="tenor points"/>
-                                </TextBlock>
+                                <TextBlock Text="VALIDATION" Style="{StaticResource Text.Label}"/>
+                                <TextBlock Margin="0,6,0,0" Style="{StaticResource Text.Kpi}" Text="{Binding ValidationText}"
+                                           Foreground="{Binding ValidationLevel, Converter={StaticResource LevelBrush}}"/>
+                                <TextBlock Margin="0,2,0,0" FontSize="11.5" Style="{StaticResource Text.Faint}"
+                                           TextTrimming="CharacterEllipsis" Text="{Binding ValidationDetail}"
+                                           ToolTip="{Binding ValidationDetail}"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- MX3-import -->
+                        <Border Grid.Column="4" Style="{StaticResource Card}" Padding="16,12">
+                            <StackPanel>
+                                <TextBlock Text="MX3 IMPORT" Style="{StaticResource Text.Label}"/>
+                                <Grid Margin="0,9,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="46"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="6"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+
+                                    <TextBlock Text="ATM" Style="{StaticResource Text.Muted}" FontWeight="SemiBold"/>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                        <Ellipse Width="7" Height="7" VerticalAlignment="Center"
+                                                 Fill="{Binding AtmImportLevel, Converter={StaticResource LevelBrush}}"/>
+                                        <TextBlock Margin="7,0,0,0" Text="{Binding AtmImportText}"
+                                                   Typography.NumeralAlignment="Tabular"
+                                                   Foreground="{Binding AtmImportLevel, Converter={StaticResource LevelBrush}}"/>
+                                    </StackPanel>
+
+                                    <TextBlock Grid.Row="2" Text="Smile" Style="{StaticResource Text.Muted}" FontWeight="SemiBold"/>
+                                    <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal">
+                                        <Ellipse Width="7" Height="7" VerticalAlignment="Center"
+                                                 Fill="{Binding SmileImportLevel, Converter={StaticResource LevelBrush}}"/>
+                                        <TextBlock Margin="7,0,0,0" Text="{Binding SmileImportText}"
+                                                   Typography.NumeralAlignment="Tabular"
+                                                   Foreground="{Binding SmileImportLevel, Converter={StaticResource LevelBrush}}"/>
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Schema -->
+                        <Border Grid.Column="6" Style="{StaticResource Card}" Padding="16,12">
+                            <Border.ToolTip>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding ScheduleDescription}" FontWeight="SemiBold"/>
+                                    <TextBlock Margin="0,4,0,0" Text="Run by the master instance only. The switch pauses or resumes scheduled imports for all users."/>
+                                </StackPanel>
+                            </Border.ToolTip>
+                            <Grid>
+                                <StackPanel>
+                                    <TextBlock Text="NEXT SCHEDULED" Style="{StaticResource Text.Label}"/>
+                                    <TextBlock Margin="0,6,0,0" Text="{Binding NextScheduledText}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Kpi}">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding ScheduledImportsEnabled}" Value="False">
+                                                        <Setter Property="Foreground" Value="{StaticResource Brush.TextFaint}"/>
+                                                        <Setter Property="TextDecorations" Value="Strikethrough"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <TextBlock Margin="0,2,0,0" FontSize="11.5" Style="{StaticResource Text.Faint}"
+                                               TextTrimming="CharacterEllipsis" Text="{Binding NextScheduledDetail}"/>
+                                    <TextBlock Margin="0,3,0,0" FontSize="11" TextTrimming="CharacterEllipsis"
+                                               Text="{Binding LastScheduledText}" ToolTip="{Binding LastScheduledText}"
+                                               Foreground="{Binding LastScheduledLevel, Converter={StaticResource LevelBrush}}"/>
+                                </StackPanel>
+                                <CheckBox Style="{StaticResource ToggleSwitch}" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                          IsChecked="{Binding ScheduledImportsEnabled}"
+                                          ToolTip="Scheduled imports on/off – applies to all users"/>
+                            </Grid>
+                        </Border>
+                    </Grid>
+
+                    <!-- Valt valutapar: yta + graf -->
+                    <Border Grid.Row="2" Style="{StaticResource Card}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <Grid Margin="20,16,18,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock FontSize="20" FontWeight="SemiBold"
+                                                   Text="{Binding SelectedPair.DisplayName, FallbackValue='–'}"/>
+                                        <Border Style="{StaticResource Tag}" Margin="12,0,0,0" VerticalAlignment="Center"
+                                                Visibility="{Binding SelectedPair.BloombergPair, Converter={StaticResource EmptyToCollapsed}, FallbackValue=Collapsed}">
+                                            <TextBlock>
+                                                <Run Text="BBG"/>
+                                                <Run Text="{Binding SelectedPair.BloombergPair, Mode=OneWay}" FontWeight="SemiBold"/>
+                                            </TextBlock>
+                                        </Border>
+                                        <Border Style="{StaticResource Tag}" Margin="6,0,0,0" VerticalAlignment="Center"
+                                                Background="{StaticResource Level.Info.Bg}"
+                                                BorderBrush="{StaticResource Level.Info.Border}"
+                                                Visibility="{Binding SelectedPair.IsInverted, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}"
+                                                ToolTip="Bloomberg only quotes the inverse pair. ATM and BF are used as is, RR changes sign before import.">
+                                            <TextBlock Text="RR sign flipped" Foreground="{StaticResource Level.Info.Fg}"/>
+                                        </Border>
+                                    </StackPanel>
+                                    <TextBlock Margin="0,3,0,0" Style="{StaticResource Text.Faint}" Text="{Binding SelectedSubtitle}"/>
+                                </StackPanel>
+
+                                <Border Grid.Column="1" Style="{StaticResource Chip}" VerticalAlignment="Top"
+                                        Visibility="{Binding HasSelectedData, Converter={StaticResource BoolToVis}}"
+                                        Background="{Binding SelectedPair.StatusLevel, Converter={StaticResource LevelBrush}, ConverterParameter=Bg}"
+                                        BorderBrush="{Binding SelectedPair.StatusLevel, Converter={StaticResource LevelBrush}, ConverterParameter=Border}"
+                                        ToolTip="{Binding SelectedPair.StatusTooltip}">
+                                    <TextBlock FontSize="11.5" FontWeight="SemiBold" VerticalAlignment="Center"
+                                               Text="{Binding SelectedPair.StatusShortText}"
+                                               Foreground="{Binding SelectedPair.StatusLevel, Converter={StaticResource LevelBrush}}"/>
+                                </Border>
+                            </Grid>
+
+                            <!-- Tomt läge -->
+                            <StackPanel Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                        Visibility="{Binding HasSelectedData, Converter={StaticResource BoolToVis}, ConverterParameter=Invert}">
+                                <Path HorizontalAlignment="Center" Width="40" Height="26" Stretch="Fill"
+                                      Data="M0,26 L10,12 L18,18 L32,2 L40,8"
+                                      Stroke="{StaticResource Brush.BorderStrong}" StrokeThickness="2.5"
+                                      StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                                <TextBlock Margin="0,12,0,0" HorizontalAlignment="Center" Style="{StaticResource Text.Muted}"
+                                           Text="{Binding SelectedEmptyText}"/>
                             </StackPanel>
 
-                            <!-- Loading indicator -->
-                            <Border Grid.Column="1" 
-        Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}"
-        Background="#1538BDF8"
-        BorderBrush="#3038BDF8"
-        BorderThickness="1"
-        CornerRadius="8"
-        Padding="14,8">
-                                <StackPanel Orientation="Horizontal">
-                                    <Grid Width="16" Height="16" Margin="0,0,10,0">
-                                        <!-- Spinner animation -->
-                                        <Ellipse Width="16" Height="16" 
-                     Stroke="{StaticResource Brush.Accent}" 
-                     StrokeThickness="2"
-                     Opacity="0.3"/>
-                                        <Ellipse Width="16" Height="16" 
-                     Stroke="{StaticResource Brush.Accent}" 
-                     StrokeThickness="2"
-                     StrokeDashArray="4,8"
-                     RenderTransformOrigin="0.5,0.5">
-                                            <Ellipse.RenderTransform>
-                                                <RotateTransform x:Name="SpinnerRotate"/>
-                                            </Ellipse.RenderTransform>
-                                            <Ellipse.Triggers>
-                                                <EventTrigger RoutedEvent="Loaded">
-                                                    <BeginStoryboard>
-                                                        <Storyboard RepeatBehavior="Forever">
-                                                            <DoubleAnimation 
-                                    Storyboard.TargetName="SpinnerRotate"
-                                    Storyboard.TargetProperty="Angle"
-                                    From="0" To="360" 
-                                    Duration="0:0:1"/>
-                                                        </Storyboard>
-                                                    </BeginStoryboard>
-                                                </EventTrigger>
-                                            </Ellipse.Triggers>
-                                        </Ellipse>
-                                    </Grid>
-                                    <TextBlock Text="Loading..." 
-                   Foreground="{StaticResource Brush.Accent}"
-                   FontSize="12"
-                   FontWeight="Medium"
-                   VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </Border>
-                        </Grid>
+                            <Grid Grid.Row="1" Margin="20,0,20,16"
+                                  Visibility="{Binding HasSelectedData, Converter={StaticResource BoolToVis}}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="20"/>
+                                    <ColumnDefinition Width="300"/>
+                                </Grid.ColumnDefinitions>
 
-                        <!-- DataGrid -->
-                        <DataGrid Grid.Row="1"
-                                  ItemsSource="{Binding VolatilityData}"
-                                  Style="{StaticResource DarkDataGrid}"
-                                  AutoGenerateColumns="False"
-                                  CanUserAddRows="False"
-                                  IsReadOnly="True"
-                                  HeadersVisibility="Column"
-                                  HorizontalScrollBarVisibility="Disabled"
-                                  ColumnWidth="*">
-                            <DataGrid.Columns>
-                                <DataGridTextColumn Header="PAIR" Binding="{Binding CurrencyPair}" Width="Auto" MinWidth="55"/>
-                                <DataGridTextColumn Header="TENOR" Binding="{Binding Tenor}" Width="Auto" MinWidth="45"/>
-                                <DataGridTextColumn Header="ATM BID" Binding="{Binding AtmBid, StringFormat=N3}" Width="*"/>
-                                <DataGridTextColumn Header="ATM ASK" Binding="{Binding AtmAsk, StringFormat=N3}" Width="*"/>
-                                <DataGridTextColumn Header="RR 25D" Binding="{Binding RR25D, StringFormat=N3}" Width="*"/>
-                                <DataGridTextColumn Header="RR 10D" Binding="{Binding RR10D, StringFormat=N3}" Width="*"/>
-                                <DataGridTextColumn Header="BF 25D" Binding="{Binding BF25D, StringFormat=N3}" Width="*"/>
-                                <DataGridTextColumn Header="BF 10D" Binding="{Binding BF10D, StringFormat=N3}" Width="*"/>
-                            </DataGrid.Columns>
-                        </DataGrid>
-                    </Grid>
-                </Border>
+                                <!-- Tabell -->
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
+
+                                    <!-- Grupprubriker -->
+                                    <Grid Margin="0,0,0,2">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="{StaticResource Col.Tenor}"/>
+                                            <ColumnDefinition Width="5*"/>
+                                            <ColumnDefinition Width="{StaticResource Col.Gap}"/>
+                                            <ColumnDefinition Width="4*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Border Grid.Column="1" BorderBrush="{StaticResource Brush.BorderStrong}" BorderThickness="0,0,0,1" Padding="0,0,0,3">
+                                            <TextBlock Text="ATM VOLATILITY" Style="{StaticResource Text.Label}" HorizontalAlignment="Right"/>
+                                        </Border>
+                                        <Border Grid.Column="3" BorderBrush="{StaticResource Brush.BorderStrong}" BorderThickness="0,0,0,1" Padding="0,0,0,3">
+                                            <TextBlock Text="SMILE (MID)" Style="{StaticResource Text.Label}" HorizontalAlignment="Right"/>
+                                        </Border>
+                                    </Grid>
+
+                                    <!-- Kolumnrubriker -->
+                                    <Grid Grid.Row="1" Height="26">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="{StaticResource Col.Tenor}"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="{StaticResource Col.Gap}"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="TENOR" Style="{StaticResource Text.Label}" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                        <TextBlock Grid.Column="1" Text="BID" Style="{StaticResource Text.Label}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="ASK" Style="{StaticResource Text.Label}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="3" Text="MID" Style="{StaticResource Text.Label}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="4" Text="SPREAD" Style="{StaticResource Text.Label}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="5" Text="Δ MID" Style="{StaticResource Text.Label}" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                   ToolTip="Change in ATM mid since the previous load"/>
+                                        <TextBlock Grid.Column="7" Text="RR 25D" Style="{StaticResource Text.Label}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="8" Text="RR 10D" Style="{StaticResource Text.Label}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="9" Text="BF 25D" Style="{StaticResource Text.Label}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="10" Text="BF 10D" Style="{StaticResource Text.Label}" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    </Grid>
+
+                                    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                        <ItemsControl ItemsSource="{Binding SurfaceRows}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate DataType="{x:Type vm:SurfaceRowViewModel}">
+                                                    <Border x:Name="Row" Height="29" CornerRadius="6"
+                                                            Background="Transparent" ToolTip="{Binding IssueText}"
+                                                            ToolTipService.IsEnabled="{Binding HasIssue}">
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="{StaticResource Col.Tenor}"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="{StaticResource Col.Gap}"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                            </Grid.ColumnDefinitions>
+
+                                                            <Border x:Name="Marker" Width="3" Margin="0,7" CornerRadius="2" HorizontalAlignment="Left"
+                                                                    Background="{Binding IssueLevel, Converter={StaticResource LevelBrush}}"
+                                                                    Visibility="{Binding HasIssue, Converter={StaticResource BoolToVis}}"/>
+                                                            <TextBlock Grid.Column="0" Margin="10,0,0,0" VerticalAlignment="Center"
+                                                                       FontWeight="SemiBold" Text="{Binding Tenor}"/>
+
+                                                            <TextBlock Grid.Column="1" Style="{StaticResource Text.Number}" Foreground="{StaticResource Brush.TextMuted}"
+                                                                       Text="{Binding Bid, Converter={StaticResource Num}}"/>
+                                                            <TextBlock Grid.Column="2" Style="{StaticResource Text.Number}" Foreground="{StaticResource Brush.TextMuted}"
+                                                                       Text="{Binding Ask, Converter={StaticResource Num}}"/>
+                                                            <TextBlock Grid.Column="3" Style="{StaticResource Text.Number}" FontWeight="SemiBold"
+                                                                       Text="{Binding Mid, Converter={StaticResource Num}}"/>
+                                                            <TextBlock Grid.Column="4" Style="{StaticResource Text.Number}" Foreground="{StaticResource Brush.TextFaint}"
+                                                                       Text="{Binding Spread, Converter={StaticResource Num}}"/>
+                                                            <TextBlock Grid.Column="5" Style="{StaticResource Text.Number}"
+                                                                       Foreground="{Binding MidChange, Converter={StaticResource ChangeBrush}}"
+                                                                       Text="{Binding MidChange, Converter={StaticResource Num}, ConverterParameter='+0.000;-0.000;0.000'}"/>
+
+                                                            <TextBlock Grid.Column="7" Style="{StaticResource Text.Number}"
+                                                                       Text="{Binding RR25, Converter={StaticResource Num}}"/>
+                                                            <TextBlock Grid.Column="8" Style="{StaticResource Text.Number}"
+                                                                       Text="{Binding RR10, Converter={StaticResource Num}}"/>
+                                                            <TextBlock Grid.Column="9" Style="{StaticResource Text.Number}"
+                                                                       Text="{Binding BF25, Converter={StaticResource Num}}"/>
+                                                            <TextBlock Grid.Column="10" Style="{StaticResource Text.Number}" Margin="0,0,8,0"
+                                                                       Text="{Binding BF10, Converter={StaticResource Num}}"/>
+                                                        </Grid>
+                                                    </Border>
+                                                    <DataTemplate.Triggers>
+                                                        <Trigger SourceName="Row" Property="UIElement.IsMouseOver" Value="True">
+                                                            <Setter TargetName="Row" Property="Background" Value="{StaticResource Brush.Inset}"/>
+                                                        </Trigger>
+                                                        <DataTrigger Binding="{Binding IssueLevel}" Value="Error">
+                                                            <Setter TargetName="Row" Property="Background" Value="{StaticResource Level.Error.Bg}"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IssueLevel}" Value="Warning">
+                                                            <Setter TargetName="Row" Property="Background" Value="{StaticResource Level.Warning.Bg}"/>
+                                                        </DataTrigger>
+                                                    </DataTemplate.Triggers>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </Grid>
+
+                                <!-- Graf -->
+                                <Border Grid.Column="2" Background="{StaticResource Brush.Inset}" CornerRadius="10" Padding="12,10,12,8">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="*"/>
+                                        </Grid.RowDefinitions>
+                                        <Grid>
+                                            <TextBlock Text="ATM TERM STRUCTURE" Style="{StaticResource Text.Label}"/>
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                                <Border Width="12" Height="8" CornerRadius="2" Background="{StaticResource Brush.ChartBand}" VerticalAlignment="Center"/>
+                                                <TextBlock Text="bid/ask" Margin="4,0,10,0" FontSize="10.5" Style="{StaticResource Text.Faint}"/>
+                                                <Border Width="12" Height="2" Background="{StaticResource Brush.Accent}" VerticalAlignment="Center"/>
+                                                <TextBlock Text="mid" Margin="4,0,0,0" FontSize="10.5" Style="{StaticResource Text.Faint}"/>
+                                            </StackPanel>
+                                        </Grid>
+                                        <controls:TermStructureChart Grid.Row="1" Margin="0,8,0,0"
+                                                                     Points="{Binding ChartPoints}"
+                                                                     LineBrush="{StaticResource Brush.Accent}"
+                                                                     BandBrush="{StaticResource Brush.ChartBand}"
+                                                                     GridBrush="{StaticResource Brush.BorderSoft}"
+                                                                     LabelBrush="{StaticResource Brush.TextFaint}"
+                                                                     PointFill="{StaticResource Brush.Surface}"/>
+                                    </Grid>
+                                </Border>
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <!-- Aktivitetslogg -->
+                    <Border Grid.Row="4" Style="{StaticResource Card}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Grid Margin="18,10,10,4">
+                                <TextBlock Text="Activity" Style="{StaticResource Text.Section}" FontSize="13" VerticalAlignment="Center"/>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                    <TextBlock Text="{Binding UserDisplay}" Style="{StaticResource Text.Faint}" FontSize="11"
+                                               VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <Button Style="{StaticResource Btn.Ghost}" Content="Log folder" Command="{Binding OpenLogFolderCommand}"/>
+                                    <Button Style="{StaticResource Btn.Ghost}" Content="Clear" Command="{Binding ClearLogCommand}"/>
+                                </StackPanel>
+                            </Grid>
+                            <ListBox Grid.Row="1" Margin="6,0,6,8"
+                                     Style="{StaticResource PlainListBox}"
+                                     ItemContainerStyle="{StaticResource LogListItem}"
+                                     ItemsSource="{Binding LogEntries}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="12,3">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="64"/>
+                                                <ColumnDefinition Width="16"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock FontFamily="{StaticResource Font.Mono}" FontSize="11" VerticalAlignment="Center"
+                                                       Foreground="{StaticResource Brush.TextFaint}"
+                                                       Text="{Binding Time, StringFormat=HH:mm:ss}"/>
+                                            <Ellipse Grid.Column="1" Width="6" Height="6" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                                     Fill="{Binding Level, Converter={StaticResource LevelBrush}}"/>
+                                            <TextBlock x:Name="Message" Grid.Column="2" FontSize="12" TextTrimming="CharacterEllipsis"
+                                                       Text="{Binding Message}" ToolTip="{Binding Message}"/>
+                                        </Grid>
+                                        <DataTemplate.Triggers>
+                                            <DataTrigger Binding="{Binding Level}" Value="Error">
+                                                <Setter TargetName="Message" Property="Foreground" Value="{StaticResource Level.Error.Fg}"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding Level}" Value="Warning">
+                                                <Setter TargetName="Message" Property="Foreground" Value="{StaticResource Level.Warning.Fg}"/>
+                                            </DataTrigger>
+                                        </DataTemplate.Triggers>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Grid>
+                    </Border>
+                </Grid>
             </Grid>
 
-            <!-- FOOTER -->
-            <Border Grid.Row="3" 
-                    Background="{StaticResource Brush.Panel}"
-                    BorderBrush="{StaticResource Brush.BorderSoft}"
+            <!-- ======================================================
+                 ÅTGÄRDSRAD
+                 ====================================================== -->
+            <Border Grid.Row="3"
+                    Background="{StaticResource Brush.Surface}"
+                    BorderBrush="{StaticResource Brush.Border}"
                     BorderThickness="0,1,0,0"
                     Padding="16,12">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto" MinWidth="280"/>
+                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <!-- Action Buttons -->
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <Button Command="{Binding LoadDataCommand}" Style="{StaticResource AccentButton}">
+                    <StackPanel Orientation="Horizontal">
+                        <Button Style="{StaticResource Btn.Secondary}" Command="{Binding LoadDataCommand}"
+                                ToolTip="Fetch the latest surfaces from Bloomberg (does not import)">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="📥" Margin="0,0,8,0"/>
-                                <TextBlock Text="Load Data"/>
+                                <Path Data="M6,0 V8 M2.5,4.5 L6,8 L9.5,4.5 M0.5,11.5 H11.5" StrokeThickness="1.5" VerticalAlignment="Center"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                                <TextBlock Text="Load data" Margin="8,0,0,0"/>
                             </StackPanel>
                         </Button>
-                        <Button Command="{Binding ImportAtmCommand}" 
-                                Style="{StaticResource SuccessButton}"
-                                Margin="12,0,0,0">
+                        <Button Style="{StaticResource Btn.Secondary}" Margin="8,0,0,0" Command="{Binding ImportAtmCommand}"
+                                ToolTip="Write update_fxvols_ps.xml for MX3 from the loaded data">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="▶" Margin="0,0,8,0"/>
-                                <TextBlock Text="Import ATM"/>
+                                <Path Data="M0,0 L7,4.5 L0,9 Z" VerticalAlignment="Center" Fill="{StaticResource Level.Good.Fg}"/>
+                                <TextBlock Text="Import ATM" Margin="8,0,0,0"/>
                             </StackPanel>
                         </Button>
-                        <Button Command="{Binding ImportSmileCommand}" 
-                                Style="{StaticResource SuccessButton}"
-                                Margin="12,0,0,0">
+                        <Button Style="{StaticResource Btn.Secondary}" Margin="8,0,0,0" Command="{Binding ImportSmileCommand}"
+                                ToolTip="Write update_fxvols_smile.xml for MX3 from the loaded data">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="▶" Margin="0,0,8,0"/>
-                                <TextBlock Text="Import Smile"/>
+                                <Path Data="M0,0 L7,4.5 L0,9 Z" VerticalAlignment="Center" Fill="{StaticResource Level.Good.Fg}"/>
+                                <TextBlock Text="Import smile" Margin="8,0,0,0"/>
+                            </StackPanel>
+                        </Button>
+                        <Border Width="1" Height="24" Margin="12,0" Background="{StaticResource Brush.BorderStrong}"/>
+                        <Button Style="{StaticResource Btn.Primary}" Command="{Binding LoadAndImportCommand}"
+                                ToolTip="Load from Bloomberg, validate, and import ATM + smile to MX3 (ad hoc)">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Data="M7,0 L1,8 H5.5 L4.5,14 L11,5.5 H6.5 Z" VerticalAlignment="Center" Fill="White"/>
+                                <TextBlock Text="Load &amp; import all" Margin="8,0,0,0"/>
                             </StackPanel>
                         </Button>
                     </StackPanel>
 
-                    <!-- Auto-import toggle - fixerad i mitten -->
-                    <StackPanel Grid.Column="1" 
-                                Orientation="Horizontal" 
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Center">
-                        <CheckBox IsChecked="{Binding AutoImportEnabled}" VerticalAlignment="Center"/>
-                        <TextBlock Text="Auto-import at :15 past hour (08-16)"
-                                   Foreground="{StaticResource Brush.TextMuted}"
-                                   FontSize="12"
-                                   Margin="8,0,0,0"
-                                   VerticalAlignment="Center"/>
-                    </StackPanel>
+                    <DockPanel Grid.Column="1" Margin="22,0" VerticalAlignment="Center" LastChildFill="True">
+                        <Control DockPanel.Dock="Left" Style="{StaticResource Spinner}" Margin="0,0,10,0"
+                                 Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}"/>
+                        <TextBlock Style="{StaticResource Text.Muted}" TextTrimming="CharacterEllipsis"
+                                   Text="{Binding StatusText}" ToolTip="{Binding StatusText}"/>
+                    </DockPanel>
 
-                    <!-- Status - fast bredd så den inte påverkar mitten -->
-                    <TextBlock Grid.Column="2" 
-                               Text="{Binding StatusText}" 
-                               Foreground="{StaticResource Brush.TextMuted}"
-                               FontSize="12"
-                               VerticalAlignment="Center"
-                               HorizontalAlignment="Right"
-                               TextTrimming="CharacterEllipsis"/>
+                    <TextBlock Grid.Column="2" VerticalAlignment="Center" FontSize="11" Style="{StaticResource Text.Faint}"
+                               Text="{Binding ScheduleDescription}"/>
                 </Grid>
             </Border>
         </Grid>

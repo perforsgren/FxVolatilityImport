@@ -1,84 +1,98 @@
+// Services/DataValidator.cs
 using FxVolatilityImport.Models;
 
 namespace FxVolatilityImport.Services
 {
+    public enum IssueSeverity { Warning, Error }
+
+    public sealed record ValidationIssue(string CurrencyPair, string Tenor, IssueSeverity Severity, string Message);
+
+    /// <summary>
+    /// Rimlighetskontroll av Bloomberg-data före export.
+    /// Fel (Error) gör att HELA valutaparet utesluts ur importen – övriga par importeras ändå.
+    /// Varningar (Warning) visas men stoppar inget.
+    /// </summary>
     public class DataValidator
     {
-        private const double MinAtmVol = 0.5;    // 0.5% - under detta är suspekt
-        private const double MaxAtmVol = 100.0;  // 100% - över detta är suspekt
+        private const double MinAtmVol = 0.1;    // under detta är suspekt (EURDKK ligger normalt runt 0.3–1.0)
+        private const double MaxAtmVol = 100.0;  // över detta är suspekt
         private const double MaxRR = 20.0;       // |RR| > 20 är suspekt
         private const double MaxBF = 10.0;       // BF > 10 är suspekt
 
-        public ValidationResult Validate(List<VolatilityTenor> data)
+        public ValidationResult Validate(IEnumerable<VolatilityTenor> data)
         {
-            var result = new ValidationResult();
+            var issues = new List<ValidationIssue>();
 
-            foreach (var tenor in data)
+            foreach (var t in data)
             {
-                // Kolla ATM
-                if (tenor.AtmBid <= 0 || tenor.AtmAsk <= 0)
+                void Error(string message) => issues.Add(new ValidationIssue(t.CurrencyPair, t.Tenor, IssueSeverity.Error, message));
+                void Warning(string message) => issues.Add(new ValidationIssue(t.CurrencyPair, t.Tenor, IssueSeverity.Warning, message));
+
+                var missing = new List<string>();
+                if (!double.IsFinite(t.AtmBid)) missing.Add("ATM bid");
+                if (!double.IsFinite(t.AtmAsk)) missing.Add("ATM ask");
+                if (!double.IsFinite(t.RR25D)) missing.Add("RR 25D");
+                if (!double.IsFinite(t.RR10D)) missing.Add("RR 10D");
+                if (!double.IsFinite(t.BF25D)) missing.Add("BF 25D");
+                if (!double.IsFinite(t.BF10D)) missing.Add("BF 10D");
+                if (missing.Count > 0)
                 {
-                    result.Errors.Add($"{tenor.CurrencyPair} {tenor.Tenor}: ATM bid/ask is zero or negative");
-                }
-                else if (tenor.AtmBid < MinAtmVol || tenor.AtmAsk < MinAtmVol)
-                {
-                    result.Warnings.Add($"{tenor.CurrencyPair} {tenor.Tenor}: ATM unusually low ({tenor.AtmBid:F3}/{tenor.AtmAsk:F3})");
-                }
-                else if (tenor.AtmBid > MaxAtmVol || tenor.AtmAsk > MaxAtmVol)
-                {
-                    result.Warnings.Add($"{tenor.CurrencyPair} {tenor.Tenor}: ATM unusually high ({tenor.AtmBid:F3}/{tenor.AtmAsk:F3})");
+                    Error($"Missing from Bloomberg: {string.Join(", ", missing)}");
+                    continue;
                 }
 
-                // Kolla att Ask > Bid
-                if (tenor.AtmAsk < tenor.AtmBid)
-                {
-                    result.Errors.Add($"{tenor.CurrencyPair} {tenor.Tenor}: ATM ask < bid (inverted spread)");
-                }
+                // ATM
+                if (t.AtmBid <= 0 || t.AtmAsk <= 0)
+                    Error($"ATM bid/ask is zero or negative ({t.AtmBid:F3}/{t.AtmAsk:F3})");
+                else if (t.AtmBid < MinAtmVol || t.AtmAsk < MinAtmVol)
+                    Warning($"ATM unusually low ({t.AtmBid:F3}/{t.AtmAsk:F3})");
+                else if (t.AtmBid > MaxAtmVol || t.AtmAsk > MaxAtmVol)
+                    Warning($"ATM unusually high ({t.AtmBid:F3}/{t.AtmAsk:F3})");
 
-                // Kolla RR
-                if (Math.Abs(tenor.RR25D) > MaxRR || Math.Abs(tenor.RR10D) > MaxRR)
-                {
-                    result.Warnings.Add($"{tenor.CurrencyPair} {tenor.Tenor}: RR unusually high");
-                }
+                if (t.AtmAsk < t.AtmBid)
+                    Error($"ATM ask < bid ({t.AtmBid:F3}/{t.AtmAsk:F3})");
 
-                // Kolla BF (ska vara positiv)
-                if (tenor.BF25D < 0 || tenor.BF10D < 0)
-                {
-                    result.Errors.Add($"{tenor.CurrencyPair} {tenor.Tenor}: Butterfly is negative");
-                }
-                else if (tenor.BF25D > MaxBF || tenor.BF10D > MaxBF)
-                {
-                    result.Warnings.Add($"{tenor.CurrencyPair} {tenor.Tenor}: Butterfly unusually high");
-                }
+                // Risk reversals
+                if (Math.Abs(t.RR25D) > MaxRR || Math.Abs(t.RR10D) > MaxRR)
+                    Warning($"RR unusually large (25D {t.RR25D:F3}, 10D {t.RR10D:F3})");
 
-                // Kolla att 10D BF > 25D BF (normalt)
-                if (tenor.BF10D < tenor.BF25D && tenor.BF25D > 0)
-                {
-                    result.Warnings.Add($"{tenor.CurrencyPair} {tenor.Tenor}: 10D BF < 25D BF (unusual)");
-                }
+                // Butterflies (ska vara positiva)
+                if (t.BF25D < 0 || t.BF10D < 0)
+                    Error($"Negative butterfly (25D {t.BF25D:F3}, 10D {t.BF10D:F3})");
+                else if (t.BF25D > MaxBF || t.BF10D > MaxBF)
+                    Warning($"Butterfly unusually large (25D {t.BF25D:F3}, 10D {t.BF10D:F3})");
+
+                if (t.BF10D < t.BF25D && t.BF25D > 0)
+                    Warning($"10D BF below 25D BF ({t.BF10D:F3} < {t.BF25D:F3})");
             }
 
-            result.IsValid = result.Errors.Count == 0;
-            return result;
+            return new ValidationResult(issues);
         }
     }
 
-    public class ValidationResult
+    public sealed class ValidationResult
     {
-        public bool IsValid { get; set; } = true;
-        public List<string> Errors { get; } = new();
-        public List<string> Warnings { get; } = new();
+        public static readonly ValidationResult Empty = new(Array.Empty<ValidationIssue>());
 
-        public string Summary
+        public ValidationResult(IReadOnlyList<ValidationIssue> issues)
         {
-            get
-            {
-                if (IsValid && Warnings.Count == 0)
-                    return "All data validated OK";
-                if (IsValid)
-                    return $"Valid with {Warnings.Count} warning(s)";
-                return $"{Errors.Count} error(s), {Warnings.Count} warning(s)";
-            }
+            Issues = issues;
+            PairsWithErrors = issues
+                .Where(i => i.Severity == IssueSeverity.Error)
+                .Select(i => i.CurrencyPair)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
         }
+
+        public IReadOnlyList<ValidationIssue> Issues { get; }
+
+        /// <summary>Par som har minst ett fel och därför utesluts ur exporten.</summary>
+        public IReadOnlySet<string> PairsWithErrors { get; }
+
+        public int ErrorCount => Issues.Count(i => i.Severity == IssueSeverity.Error);
+        public int WarningCount => Issues.Count(i => i.Severity == IssueSeverity.Warning);
+        public bool IsValid => PairsWithErrors.Count == 0;
+
+        public IReadOnlyList<ValidationIssue> For(string currencyPair)
+            => Issues.Where(i => i.CurrencyPair.Equals(currencyPair, StringComparison.OrdinalIgnoreCase)).ToList();
     }
 }
