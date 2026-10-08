@@ -185,11 +185,12 @@ namespace FxVolatilityImport.Services
                     _startTcs = startTcs;
                 }
 
-                if (!session.StartAsync())
-                    return ConnectFailed("could not start session (is the Bloomberg Terminal running?)");
+                // StartAsync returnerar direkt (void). Resultatet kommer som SessionStarted/SessionStartupFailure
+                // i OnSessionEvent. Kastar den här fångas det i catch nedan.
+                session.StartAsync();
 
                 if (!await WaitWithTimeout(startTcs.Task, StartTimeout, ct).ConfigureAwait(false))
-                    return ConnectFailed("session start failed or timed out");
+                    return ConnectFailed("session start failed or timed out (is the Bloomberg Terminal running?)");
 
                 var openTask = Task.Run(() => session.OpenService(RefDataServiceName), ct);
                 if (!await WaitWithTimeout(openTask, OpenServiceTimeout, ct).ConfigureAwait(false))

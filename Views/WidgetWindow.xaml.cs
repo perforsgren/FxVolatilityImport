@@ -1,5 +1,7 @@
-using System.Windows;
+// Views/WidgetWindow.xaml.cs
+using System.Globalization;
 using System.IO;
+using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media.Animation;
 using FxVolatilityImport.ViewModels;
@@ -10,7 +12,7 @@ namespace FxVolatilityImport.Views
     public partial class WidgetWindow : Window
     {
         public event EventHandler? WidgetClicked;
-        
+
         private Storyboard? _spinAnimation;
         private Storyboard? _successAnimation;
 
@@ -23,10 +25,11 @@ namespace FxVolatilityImport.Views
         {
             InitializeComponent();
             DataContext = viewModel;
-            
+
             Loaded += WidgetWindow_Loaded;
             LocationChanged += WidgetWindow_LocationChanged;
-            
+            Closed += (_, _) => viewModel.PropertyChanged -= ViewModel_PropertyChanged;
+
             viewModel.PropertyChanged += ViewModel_PropertyChanged;
         }
 
@@ -36,21 +39,15 @@ namespace FxVolatilityImport.Views
             {
                 var vm = (MainViewModel)DataContext;
                 if (vm.IsImporting)
-                {
                     StartSpinAnimation();
-                }
                 else
-                {
                     StopSpinAnimation();
-                }
             }
             else if (e.PropertyName == nameof(MainViewModel.ImportJustCompleted))
             {
                 var vm = (MainViewModel)DataContext;
                 if (vm.ImportJustCompleted)
-                {
                     StartSuccessAnimation();
-                }
             }
         }
 
@@ -74,56 +71,34 @@ namespace FxVolatilityImport.Views
         private void WidgetWindow_Loaded(object sender, RoutedEventArgs e)
         {
             RestorePosition();
-            
+
             var vm = (MainViewModel)DataContext;
             if (vm.IsImporting)
-            {
                 StartSpinAnimation();
-            }
         }
 
         private void WidgetWindow_LocationChanged(object? sender, EventArgs e)
         {
             if (IsLoaded && WindowState == WindowState.Normal)
-            {
                 SavePosition();
-            }
         }
 
-        private async void ImportAllButton_Click(object sender, RoutedEventArgs e)
-        {
-            var vm = (MainViewModel)DataContext;
-            
-            // Ladda data f�rst
-            vm.LoadDataCommand.Execute(null);
-            
-            // V�nta tills laddning �r klar
-            while (vm.IsLoading)
-            {
-                await Task.Delay(100);
-            }
-            
-            // Importera om data laddades
-            if (vm.VolatilityData.Any())
-            {
-                vm.ImportAtmCommand.Execute(null);
-                vm.ImportSmileCommand.Execute(null);
-            }
-        }
+        // "Load & import all"-knappen binder direkt till MainViewModel.LoadAndImportCommand i XAML,
+        // så ingen click-handler behövs här längre.
 
         private void SavePosition()
         {
             try
             {
-                var dir = Path.GetDirectoryName(SettingsPath);
-                if (!Directory.Exists(dir))
-                    Directory.CreateDirectory(dir!);
+                Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
 
-                var content = $"{Left},{Top}";
+                // InvariantCulture + ';' – med svenska inställningar blir annars "1234,5" och split på ',' går sönder
+                var content = string.Create(CultureInfo.InvariantCulture, $"{Left};{Top}");
                 File.WriteAllText(SettingsPath, content);
             }
             catch
             {
+                // Position är bara bekvämlighet – ignorera fel
             }
         }
 
@@ -133,21 +108,18 @@ namespace FxVolatilityImport.Views
             {
                 if (!File.Exists(SettingsPath))
                 {
-                    var primaryScreen = Screen.PrimaryScreen!.WorkingArea;
-                    Left = primaryScreen.Right - Width - 20;
-                    Top = primaryScreen.Bottom - Height - 20;
+                    MoveToCorner(Screen.PrimaryScreen!);
                     return;
                 }
 
-                var content = File.ReadAllText(SettingsPath);
-                var parts = content.Split(',');
-                
+                var parts = File.ReadAllText(SettingsPath).Split(';');
+
                 if (parts.Length == 2 &&
-                    double.TryParse(parts[0], out double left) &&
-                    double.TryParse(parts[1], out double top))
+                    double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out double left) &&
+                    double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double top))
                 {
                     var position = new System.Drawing.Point((int)left + 50, (int)top + 50);
-                    
+
                     if (IsPositionOnAnyScreen(position))
                     {
                         Left = left;
@@ -158,10 +130,22 @@ namespace FxVolatilityImport.Views
                         MoveToNearestScreen(left, top);
                     }
                 }
+                else
+                {
+                    // Gammalt format eller trasig fil
+                    MoveToCorner(Screen.PrimaryScreen!);
+                }
             }
             catch
             {
+                // ignorera – fönstret hamnar där WPF placerar det
             }
+        }
+
+        private void MoveToCorner(Screen screen)
+        {
+            Left = screen.WorkingArea.Right - Width - 20;
+            Top = screen.WorkingArea.Bottom - Height - 20;
         }
 
         private static bool IsPositionOnAnyScreen(System.Drawing.Point point)
@@ -184,9 +168,9 @@ namespace FxVolatilityImport.Views
             {
                 var centerX = screen.WorkingArea.Left + screen.WorkingArea.Width / 2;
                 var centerY = screen.WorkingArea.Top + screen.WorkingArea.Height / 2;
-                
+
                 var distance = Math.Sqrt(
-                    Math.Pow(savedPoint.X - centerX, 2) + 
+                    Math.Pow(savedPoint.X - centerX, 2) +
                     Math.Pow(savedPoint.Y - centerY, 2));
 
                 if (distance < minDistance)
@@ -197,10 +181,7 @@ namespace FxVolatilityImport.Views
             }
 
             if (nearestScreen != null)
-            {
-                Left = nearestScreen.WorkingArea.Right - Width - 20;
-                Top = nearestScreen.WorkingArea.Bottom - Height - 20;
-            }
+                MoveToCorner(nearestScreen);
         }
 
         private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -209,9 +190,10 @@ namespace FxVolatilityImport.Views
             {
                 WidgetClicked?.Invoke(this, EventArgs.Empty);
             }
-            else
+            else if (e.ButtonState == MouseButtonState.Pressed)
             {
-                DragMove();
+                try { DragMove(); }
+                catch (InvalidOperationException) { /* musknappen släpptes innan DragMove startade */ }
             }
         }
 
