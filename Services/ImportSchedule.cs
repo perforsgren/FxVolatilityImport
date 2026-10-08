@@ -80,12 +80,14 @@ namespace FxVolatilityImport.Services
         /// </summary>
         /// <param name="now">Aktuell tid.</param>
         /// <param name="lastSuccessfulSlot">Senaste slot som importerats utan fel (delas via scheduler.json).</param>
+        /// <param name="lastFailedSlot">Slot som (föregående) master försökte men misslyckades med (delas via scheduler.json).</param>
         /// <param name="attemptedSlot">Slot som denna instans senast försökte köra.</param>
         /// <param name="attempts">Antal försök denna instans gjort för attemptedSlot.</param>
         /// <param name="lastAttemptAt">När senaste försöket gjordes.</param>
         public static (SlotAction Action, DateTime? Slot) Evaluate(
             DateTime now,
             DateTime? lastSuccessfulSlot,
+            DateTime? lastFailedSlot,
             DateTime? attemptedSlot,
             int attempts,
             DateTime lastAttemptAt)
@@ -105,6 +107,11 @@ namespace FxVolatilityImport.Services
                     return (SlotAction.None, slot);
                 return (SlotAction.Retry, slot);
             }
+
+            // Förra mastern försökte men misslyckades (t.ex. dess Terminal loggades ut) och lämnade över rollen:
+            // ta över omförsöken så länge vi är inom RetryWindow, i stället för att hoppa över slotten.
+            if (lastFailedSlot == slot)
+                return age <= RetryWindow ? (SlotAction.Start, slot) : (SlotAction.None, slot);
 
             return age <= StartWindow
                 ? (SlotAction.Start, slot)

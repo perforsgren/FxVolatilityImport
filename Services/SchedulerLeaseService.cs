@@ -18,14 +18,15 @@ namespace FxVolatilityImport.Services
     ///
     /// Failover:
     /// - Stängs eller kraschar master-appen släpper filservern låset, och nästa instans tar över inom ca 10 s.
-    /// - Har master inte haft fungerande Bloomberg på 3 minuter släpper den rollen frivilligt,
-    ///   så att någon annan med inloggad Terminal tar över.
-    /// - Bara instanser med fungerande Bloomberg försöker bli master.
+    /// - Får master ingen Bloomberg-data på 90 s (t.ex. Terminalen utloggad för att man loggat in på
+    ///   telefonen) släpper den rollen frivilligt, så att någon annan med inloggad Terminal tar över.
+    /// - Bara instanser med fungerande Bloomberg-data försöker bli master. Det finns ingen prioritetsordning:
+    ///   den första som ser att låset är ledigt (kollar var 10:e s) tar det.
     /// </summary>
     public sealed class SchedulerLeaseService : IDisposable
     {
         private static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(10);
-        private static readonly TimeSpan IneligibleGrace = TimeSpan.FromMinutes(3);
+        public static readonly TimeSpan IneligibleGrace = TimeSpan.FromSeconds(90);
         public static readonly TimeSpan StaleAfter = TimeSpan.FromMinutes(2);
 
         private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
@@ -40,6 +41,7 @@ namespace FxVolatilityImport.Services
         private FileStream? _lockStream;
         private SchedulerLeaseInfo _info = new();
         private DateTime? _ineligibleSince;
+        private long _handoverAtTicks;
         private volatile bool _isMaster;
         private volatile SchedulerLeaseInfo? _holder;
         private volatile bool _disposed;
@@ -65,6 +67,25 @@ namespace FxVolatilityImport.Services
         public bool IsHolderAlive => _holder is { } holder && DateTime.Now - holder.Heartbeat <= StaleAfter;
 
         public DateTime? LastSuccessfulSlot => _holder?.LastSuccessfulSlot;
+
+        /// <summary>
+        /// Slot som (föregående) master försökte köra men misslyckades med. En ny master får ta över
+        /// omförsöken för den, t.ex. när förra mastern lämnade rollen för att Terminalen loggats ut.
+        /// </summary>
+        public DateTime? LastFailedSlot => _holder is { LastRunOk: false } holder ? holder.LastRunSlot : null;
+
+        /// <summary>
+        /// När denna master lämnar över rollen om Bloomberg-data inte kommer tillbaka (null = ingen överlämning på gång).
+        /// Läses låsfritt – UI:t anropar varje sekund och får inte vänta på nätverksdisken.
+        /// </summary>
+        public DateTime? HandoverAt
+        {
+            get
+            {
+                var ticks = Interlocked.Read(ref _handoverAtTicks);
+                return ticks == 0 ? null : new DateTime(ticks);
+            }
+        }
 
         public void Start() => _timer.Change(TimeSpan.FromSeconds(3), TickInterval);
 
@@ -92,7 +113,8 @@ namespace FxVolatilityImport.Services
                         _ineligibleSince ??= DateTime.Now;
                         if (DateTime.Now - _ineligibleSince.Value >= IneligibleGrace)
                         {
-                            _log.Warning("Bloomberg has been unavailable for 3 minutes – handing the scheduler over to another user");
+                            _log.Warning($"No Bloomberg data on this PC for {IneligibleGrace.TotalSeconds:0} s – " +
+                                         "handing the scheduler over to another user with a logged-in Terminal");
                             ReleaseLocked(markReleased: true);
                             changed = true;
                         }
@@ -123,6 +145,9 @@ namespace FxVolatilityImport.Services
                     else
                         ReadHolderLocked();
                 }
+
+                Interlocked.Exchange(ref _handoverAtTicks,
+                    _lockStream != null && _ineligibleSince is DateTime since ? (since + IneligibleGrace).Ticks : 0);
             }
 
             if (changed)
@@ -260,6 +285,8 @@ namespace FxVolatilityImport.Services
         private void ReleaseLocked(bool markReleased)
         {
             var wasMaster = _isMaster;
+            _ineligibleSince = null;
+            Interlocked.Exchange(ref _handoverAtTicks, 0);
 
             if (markReleased && _lockStream != null)
             {
@@ -294,8 +321,8 @@ namespace FxVolatilityImport.Services
 
                 if (ok)
                     _info.LastSuccessfulSlot = slot;
-                _info.LastRunAt = DateTime.Now;
                 _info.LastRunSlot = slot;
+                _info.LastRunAt = DateTime.Now;
                 _info.LastRunOk = ok;
                 _info.LastRunSummary = summary;
 

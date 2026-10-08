@@ -47,6 +47,7 @@ namespace FxVolatilityImport.ViewModels
         private int _attemptCount;
         private DateTime _lastAttemptAt;
         private DateTime? _skippedSlot;
+        private DateTime? _noDataSlot;
         private bool _scheduledRunActive;
 
         // Senaste "load & import" som väntar på att MX3 ska läsa in filerna
@@ -143,6 +144,18 @@ namespace FxVolatilityImport.ViewModels
 
         private bool _showBloombergBanner;
         public bool ShowBloombergBanner { get => _showBloombergBanner; private set => SetProperty(ref _showBloombergBanner, value); }
+
+        private string _bannerTitle = "";
+        public string BannerTitle { get => _bannerTitle; private set => SetProperty(ref _bannerTitle, value); }
+
+        private string _bannerText = "";
+        public string BannerText { get => _bannerText; private set => SetProperty(ref _bannerText, value); }
+
+        private UiLevel _bannerLevel = UiLevel.Error;
+        public UiLevel BannerLevel { get => _bannerLevel; private set => SetProperty(ref _bannerLevel, value); }
+
+        private string _bannerButtonText = "Reconnect now";
+        public string BannerButtonText { get => _bannerButtonText; private set => SetProperty(ref _bannerButtonText, value); }
 
         // --- Scheduler ---
         private bool _isMaster;
@@ -340,7 +353,24 @@ namespace FxVolatilityImport.ViewModels
                 return;
 
             var (action, slot) = ImportSchedule.Evaluate(
-                now, _lease.LastSuccessfulSlot, _attemptSlot, _attemptCount, _lastAttemptAt);
+                now, _lease.LastSuccessfulSlot, _lease.LastFailedSlot, _attemptSlot, _attemptCount, _lastAttemptAt);
+
+            // Dags att köra, men Terminalen på denna PC ger ingen data (t.ex. utloggad efter inloggning på telefonen).
+            // Försök inte – det misslyckas ändå. Markera slotten som misslyckad i scheduler.json så att den som tar
+            // över master-rollen (efter 90 s) får köra den, eller vi själva om datan kommer tillbaka inom 15 min.
+            if (action is SlotAction.Start or SlotAction.Retry && !_bbg.HasLiveData)
+            {
+                if (_noDataSlot != slot)
+                {
+                    _noDataSlot = slot;
+                    var why = $"no Bloomberg data on {Environment.UserName}'s PC";
+                    var cause = _bbg.IsConnected ? "the Terminal returns no data (logged out?)" : "Bloomberg is not connected";
+                    _ = Task.Run(() => _lease.RecordRun(slot!.Value, false, why));
+                    _log.Warning($"Scheduled import {slot:HH:mm} is due but {cause}. " +
+                                 "Waiting – another user with a logged-in Terminal takes over automatically");
+                }
+                return;
+            }
 
             switch (action)
             {
@@ -880,6 +910,8 @@ namespace FxVolatilityImport.ViewModels
             var state = _bbg.State;
             IsConnected = state == BloombergState.Connected;
 
+            var noDataSince = _bbg.DataUnavailableSince;
+
             switch (state)
             {
                 case BloombergState.Connected:
@@ -889,15 +921,22 @@ namespace FxVolatilityImport.ViewModels
                     {
                         BloombergText = "Bloomberg";
                         BloombergLevel = UiLevel.Good;
+                        BloombergDetail = $"Connected since {since:HH:mm:ss}" +
+                                          (heartbeat.HasValue ? $" · data checked {heartbeat:HH:mm:ss}" : "");
+                    }
+                    else if (noDataSince.HasValue)
+                    {
+                        BloombergText = "Bloomberg · no data";
+                        BloombergLevel = UiLevel.Warning;
+                        BloombergDetail = $"Connected, but no data since {noDataSince:HH:mm:ss} – the Terminal is probably logged out " +
+                                          $"(e.g. after logging in on your phone). Checked {heartbeat:HH:mm:ss}. Reason: {_bbg.DataUnavailableReason}";
                     }
                     else
                     {
-                        BloombergText = heartbeat.HasValue ? "Bloomberg · no data" : "Bloomberg · checking";
-                        BloombergLevel = heartbeat.HasValue ? UiLevel.Warning : UiLevel.Info;
+                        BloombergText = "Bloomberg · checking";
+                        BloombergLevel = UiLevel.Info;
+                        BloombergDetail = $"Connected since {since:HH:mm:ss} – checking that data comes through";
                     }
-                    BloombergDetail = $"Connected since {since:HH:mm:ss}" +
-                                      (heartbeat.HasValue ? $" · last check {heartbeat:HH:mm:ss}" : "") +
-                                      (_bbg.HasLiveData ? "" : " · no data returned – is the Terminal logged in?");
                     break;
 
                 case BloombergState.Connecting:
@@ -916,7 +955,56 @@ namespace FxVolatilityImport.ViewModels
                     break;
             }
 
-            ShowBloombergBanner = _started && state == BloombergState.Disconnected;
+            UpdateBanner(state, noDataSince);
+        }
+
+        /// <summary>Banner överst: Bloomberg nere (röd) eller uppe men utan data, t.ex. utloggad Terminal (gul).</summary>
+        private void UpdateBanner(BloombergState state, DateTime? noDataSince)
+        {
+            if (!_started)
+            {
+                ShowBloombergBanner = false;
+                return;
+            }
+
+            // Vad händer med de schemalagda importerna medan den här PC:n saknar data?
+            var holder = _lease.Holder;
+            string imports;
+            if (_lease.IsMaster && _lease.HandoverAt is DateTime handover)
+            {
+                var secs = Math.Max(0, (int)Math.Ceiling((handover - DateTime.Now).TotalSeconds));
+                imports = $"Scheduled imports are handed over to another user in {secs} s.";
+            }
+            else if (!_lease.IsMaster && holder != null && _lease.IsHolderAlive)
+            {
+                imports = $"Scheduled imports continue on {holder.User}'s PC.";
+            }
+            else
+            {
+                imports = "Scheduled imports pause until someone with a logged-in Terminal runs the app.";
+            }
+
+            if (state == BloombergState.Disconnected)
+            {
+                ShowBloombergBanner = true;
+                BannerLevel = UiLevel.Error;
+                BannerTitle = "Bloomberg is not connected";
+                BannerText = $"Reconnecting automatically. {imports} {BloombergDetail}";
+                BannerButtonText = "Reconnect now";
+            }
+            else if (state == BloombergState.Connected && noDataSince.HasValue)
+            {
+                ShowBloombergBanner = true;
+                BannerLevel = UiLevel.Warning;
+                BannerTitle = $"No Bloomberg data since {noDataSince:HH:mm}";
+                BannerText = $"The Terminal is probably logged out – e.g. after logging in to Bloomberg on your phone. " +
+                             $"Log in again in the Terminal; the app notices within 20 s. {imports}";
+                BannerButtonText = "Check again";
+            }
+            else
+            {
+                ShowBloombergBanner = false;
+            }
         }
 
         private void UpdateSchedulerStatus()
@@ -926,11 +1014,20 @@ namespace FxVolatilityImport.ViewModels
             var holder = _lease.Holder;
             var holderAlive = _lease.IsHolderAlive;
 
-            if (IsMaster)
+            if (IsMaster && _lease.HandoverAt is DateTime handover)
+            {
+                var secs = Math.Max(0, (int)Math.Ceiling((handover - now).TotalSeconds));
+                SchedulerText = "Master · handing over";
+                SchedulerLevel = UiLevel.Warning;
+                SchedulerDetail = $"This PC gets no Bloomberg data. The master role is handed over in {secs} s to another user " +
+                                  "with a logged-in Terminal, unless the data comes back first.";
+            }
+            else if (IsMaster)
             {
                 SchedulerText = "Master · this PC";
                 SchedulerLevel = UiLevel.Good;
-                SchedulerDetail = "This instance runs the scheduled imports. If it closes, another user's app takes over automatically.";
+                SchedulerDetail = "This instance runs the scheduled imports. If it closes or loses Bloomberg data, " +
+                                  "another user's app takes over automatically.";
             }
             else if (holder != null && holderAlive)
             {
@@ -1037,11 +1134,13 @@ namespace FxVolatilityImport.ViewModels
         // Övrigt
         // =====================================================================
 
+        /// <summary>Knappen i bannern: ny uppkoppling om sessionen är nere, annars en direkt datakontroll.</summary>
         private async Task ReconnectAsync()
         {
-            _log.Info("Reconnecting to Bloomberg…");
-            await _bbg.ConnectAsync(force: true);
+            _log.Info(_bbg.IsConnected ? "Checking Bloomberg data…" : "Reconnecting to Bloomberg…");
+            await _bbg.CheckNowAsync();
             UpdateBloombergStatus();
+            UpdateSchedulerStatus();
         }
 
         private void OpenLogFolder()

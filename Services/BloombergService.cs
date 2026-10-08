@@ -44,8 +44,16 @@ namespace FxVolatilityImport.Services
         private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(60);
         private static readonly TimeSpan HeartbeatTimeout = TimeSpan.FromSeconds(20);
         private static readonly TimeSpan WatchdogInterval = TimeSpan.FromSeconds(5);
-        private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromMinutes(5);
         private static readonly TimeSpan MaxBackoff = TimeSpan.FromMinutes(2);
+
+        /// <summary>Hur ofta vi kontrollerar att data kommer när allt fungerar.</summary>
+        private static readonly TimeSpan HealthyCheckInterval = TimeSpan.FromSeconds(60);
+
+        /// <summary>
+        /// Hur ofta vi kontrollerar när Bloomberg inte ger data (t.ex. Terminalen utloggad för att man loggat in
+        /// på mobilen). Tätt, så att en ny inloggning i Terminalen märks inom ca 20 s.
+        /// </summary>
+        private static readonly TimeSpan NoDataCheckInterval = TimeSpan.FromSeconds(20);
 
         private static readonly BbgName SessionStarted = BbgName.GetName("SessionStarted");
         private static readonly BbgName SessionStartupFailure = BbgName.GetName("SessionStartupFailure");
@@ -85,6 +93,8 @@ namespace FxVolatilityImport.Services
         private DateTime? _connectedSince;
         private string? _lastError;
         private volatile bool _hasLiveData;
+        private DateTime? _noDataSince;
+        private string? _noDataReason;
         private int _watchdogRunning;
         private volatile bool _disposed;
 
@@ -102,8 +112,15 @@ namespace FxVolatilityImport.Services
         public BloombergState State { get { lock (_stateLock) return _state; } }
         public bool IsConnected => State == BloombergState.Connected;
 
-        /// <summary>True när senaste heartbeat/hämtning faktiskt gav data (Terminalen är inloggad).</summary>
+        /// <summary>True när senaste kontroll/hämtning faktiskt gav data (Terminalen är inloggad).</summary>
         public bool HasLiveData => _hasLiveData;
+
+        /// <summary>
+        /// Sedan när sessionen är uppe men inte ger data (null = data kommer, eller inte kontrollerat än).
+        /// Typiskt för att Terminalen loggats ut när man loggat in på Bloomberg på telefonen.
+        /// </summary>
+        public DateTime? DataUnavailableSince { get { lock (_stateLock) return _noDataSince; } }
+        public string? DataUnavailableReason { get { lock (_stateLock) return _noDataReason; } }
 
         public DateTime? ConnectedSince { get { lock (_stateLock) return _connectedSince; } }
         public DateTime? LastHeartbeat { get { lock (_stateLock) return _lastHeartbeat == DateTime.MinValue ? null : _lastHeartbeat; } }
@@ -138,9 +155,11 @@ namespace FxVolatilityImport.Services
                     lastHeartbeat = _lastHeartbeat;
                 }
 
+                var checkInterval = _hasLiveData ? HealthyCheckInterval : NoDataCheckInterval;
+
                 if (state == BloombergState.Disconnected && DateTime.Now >= nextAttempt)
                     await ConnectAsync().ConfigureAwait(false);
-                else if (state == BloombergState.Connected && DateTime.Now - lastHeartbeat >= HeartbeatInterval)
+                else if (state == BloombergState.Connected && DateTime.Now - lastHeartbeat >= checkInterval)
                     await HeartbeatAsync().ConfigureAwait(false);
             }
             catch (Exception ex)
@@ -603,15 +622,20 @@ namespace FxVolatilityImport.Services
                     }
                 }
 
-                var gotData = data.Any(d => double.IsFinite(d.AtmBid));
-                _hasLiveData = gotData;
-                if (gotData)
-                {
-                    lock (_stateLock) _lastHeartbeat = DateTime.Now;
-                }
-
                 var errors = atm.Errors.Concat(smile.Errors).ToList();
+
+                // Hämtningen fungerar också som kontroll av att Terminalen ger data
+                var gotData = data.Any(d => double.IsFinite(d.AtmBid));
+                SetDataAvailability(gotData, gotData ? null : errors.FirstOrDefault() ?? "no values returned");
+                lock (_stateLock) _lastHeartbeat = DateTime.Now;
+
                 return new VolatilityLoadResult(data, errors, DateTime.Now);
+            }
+            catch (BloombergRequestException ex)
+            {
+                // Bloomberg svarade men vägrade (t.ex. inte inloggad) – sessionen lever, men data saknas
+                SetDataAvailability(false, ex.Message);
+                throw;
             }
             catch (TimeoutException ex)
             {
@@ -631,9 +655,28 @@ namespace FxVolatilityImport.Services
         private static string SmileTicker(string bbgPair, string kind, string tenor, string source)
             => $"{bbgPair}{kind}{tenor} {source} Curncy";
 
+        /// <summary>
+        /// Kontrollerar direkt (knappen i bannern). Är sessionen nere görs en ny uppkoppling,
+        /// annars en datakontroll – t.ex. direkt efter att man loggat in i Terminalen igen.
+        /// </summary>
+        public async Task CheckNowAsync()
+        {
+            if (State == BloombergState.Connected)
+                await HeartbeatAsync().ConfigureAwait(false);
+            else
+                await ConnectAsync(force: true).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Litet anrop (EURSEK PX_LAST) som avgör om Terminalen ger data.
+        /// - Värde tillbaka            → data finns.
+        /// - Svar men inget värde/fel  → sessionen lever men Terminalen ger inte data (t.ex. utloggad).
+        ///                               Sessionen behålls – en ny session hjälper inte – och vi kollar var 20:e s.
+        /// - Timeout/session död       → återanslut.
+        /// </summary>
         private async Task HeartbeatAsync()
         {
-            // Pågår en hämtning fungerar den som hälsokontroll
+            // Pågår en hämtning fungerar den som kontroll
             if (!await _requestLock.WaitAsync(0).ConfigureAwait(false))
                 return;
 
@@ -642,31 +685,64 @@ namespace FxVolatilityImport.Services
                 var result = await RequestAsync(
                     new[] { HeartbeatTicker }, new[] { "PX_LAST" }, HeartbeatTimeout, CancellationToken.None).ConfigureAwait(false);
 
-                lock (_stateLock) _lastHeartbeat = DateTime.Now;
-
                 var hasData = double.IsFinite(result.Get(HeartbeatTicker, "PX_LAST"));
-                var hadData = _hasLiveData;
-                _hasLiveData = hasData;
-
-                if (!hasData)
-                {
-                    var why = result.Errors.Count > 0 ? string.Join("; ", result.Errors) : "no value returned";
-                    _log.Warning($"Bloomberg is connected but returns no data ({why}). Is the Terminal logged in?");
-                }
-                else if (!hadData)
-                {
-                    StateChanged?.Invoke(this, BloombergState.Connected); // uppdatera UI: data flödar igen
-                }
+                SetDataAvailability(hasData,
+                    hasData ? null : result.Errors.Count > 0 ? string.Join("; ", result.Errors.Take(2)) : "no value returned");
+            }
+            catch (BloombergRequestException ex)
+            {
+                SetDataAvailability(false, ex.Message);
             }
             catch (Exception ex)
             {
-                MarkDisconnected($"heartbeat failed: {ex.Message}");
+                MarkDisconnected($"health check failed: {ex.Message}");
             }
             finally
             {
+                lock (_stateLock) _lastHeartbeat = DateTime.Now;
                 _requestLock.Release();
             }
         }
+
+        /// <summary>Registrerar om data kommer. Loggar bara när läget ändras, så loggen inte fylls under en lång utloggning.</summary>
+        private void SetDataAvailability(bool hasData, string? reason)
+        {
+            bool lost = false, back = false, changed;
+            DateTime? since;
+            lock (_stateLock)
+            {
+                changed = _hasLiveData != hasData;
+                _hasLiveData = hasData;
+                since = _noDataSince;
+
+                if (hasData)
+                {
+                    back = _noDataSince != null;
+                    _noDataSince = null;
+                    _noDataReason = null;
+                }
+                else
+                {
+                    lost = _noDataSince == null;
+                    _noDataSince ??= DateTime.Now;
+                    _noDataReason = reason;
+                }
+            }
+
+            if (lost)
+                _log.Warning($"Bloomberg is connected but returns no data – the Terminal is probably logged out " +
+                             $"(e.g. after logging in to Bloomberg on another device). Reason: {reason}");
+            if (back && since.HasValue)
+                _log.Success($"Bloomberg data is back (was unavailable for {FormatDuration(DateTime.Now - since.Value)})");
+
+            if (changed || lost || back)
+                StateChanged?.Invoke(this, State);
+        }
+
+        private static string FormatDuration(TimeSpan d)
+            => d.TotalHours >= 1 ? $"{(int)d.TotalHours}h {d.Minutes:00}m"
+             : d.TotalMinutes >= 1 ? $"{(int)d.TotalMinutes}m {d.Seconds:00}s"
+             : $"{Math.Max(0, (int)d.TotalSeconds)}s";
 
         public void Dispose()
         {

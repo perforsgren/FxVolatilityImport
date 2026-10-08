@@ -143,12 +143,12 @@
             </Border>
 
             <!-- ======================================================
-                 BANNER: Bloomberg nere
+                 BANNER: Bloomberg nere (röd) eller utan data, t.ex. utloggad Terminal (gul)
                  ====================================================== -->
             <Border Grid.Row="1"
                     Visibility="{Binding ShowBloombergBanner, Converter={StaticResource BoolToVis}}"
-                    Background="{StaticResource Level.Error.Bg}"
-                    BorderBrush="{StaticResource Level.Error.Border}"
+                    Background="{Binding BannerLevel, Converter={StaticResource LevelBrush}, ConverterParameter=Bg}"
+                    BorderBrush="{Binding BannerLevel, Converter={StaticResource LevelBrush}, ConverterParameter=Border}"
                     BorderThickness="0,0,0,1"
                     Padding="18,8">
                 <Grid>
@@ -158,17 +158,19 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <Grid Width="16" Height="14" VerticalAlignment="Center">
-                        <Path Data="M8,0 L16,14 L0,14 Z" Fill="{StaticResource Level.Error.Fg}"/>
+                        <Path Data="M8,0 L16,14 L0,14 Z"
+                              Fill="{Binding BannerLevel, Converter={StaticResource LevelBrush}}"/>
                         <TextBlock Text="!" FontSize="10" FontWeight="Bold" Foreground="{StaticResource Brush.Bg}"
-                                   HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,0"/>
+                                   HorizontalAlignment="Center" VerticalAlignment="Bottom"/>
                     </Grid>
-                    <TextBlock Grid.Column="1" Margin="10,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis">
-                        <Run Text="Bloomberg is not connected" FontWeight="SemiBold" Foreground="{StaticResource Level.Error.Fg}"/>
-                        <Run Text=" – reconnecting automatically. "/>
-                        <Run Text="{Binding BloombergDetail, Mode=OneWay}" Foreground="{StaticResource Brush.TextMuted}"/>
+                    <TextBlock Grid.Column="1" Margin="10,0" VerticalAlignment="Center" TextWrapping="Wrap">
+                        <Run Text="{Binding BannerTitle, Mode=OneWay}" FontWeight="SemiBold"
+                             Foreground="{Binding BannerLevel, Converter={StaticResource LevelBrush}}"/>
+                        <Run Text=" – "/>
+                        <Run Text="{Binding BannerText, Mode=OneWay}" Foreground="{StaticResource Brush.TextMuted}"/>
                     </TextBlock>
-                    <Button Grid.Column="2" Style="{StaticResource Btn.Secondary}" Padding="12,5"
-                            Content="Reconnect now" Command="{Binding ReconnectCommand}"/>
+                    <Button Grid.Column="2" Style="{StaticResource Btn.Secondary}" Padding="12,5" VerticalAlignment="Center"
+                            Content="{Binding BannerButtonText}" Command="{Binding ReconnectCommand}"/>
                 </Grid>
             </Border>
 
